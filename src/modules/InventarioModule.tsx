@@ -78,10 +78,10 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
 
   return (
     <div>
-      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.25rem' }}>
+        <div style={{ flex: 1, minWidth: '260px' }}>
           <h1 className="module-title">Inventario y Catálogo Central</h1>
-          <p className="module-desc">Gestión completa del catálogo de disfraces conectado en tiempo real con Supabase PostgreSQL.</p>
+          <p className="module-desc">Gestión completa del catálogo de disfraces en tiempo real.</p>
         </div>
 
         <button className="btn btn-primary" onClick={() => setIsAddModalOpen(true)}>
@@ -90,9 +90,9 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
         </button>
       </div>
 
-      <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.5rem' }}>
+      <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ flex: 1, minWidth: '240px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ flex: 1, minWidth: '220px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Search size={18} color="var(--color-text-muted)" />
             <input
               type="text"
@@ -104,10 +104,10 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', width: '100%', maxWidth: '340px' }}>
             <select
               className="form-select"
-              style={{ padding: '0.5rem 0.85rem' }}
+              style={{ padding: '0.5rem 0.65rem', flex: 1, fontSize: '0.85rem' }}
               value={categoriaFiltro}
               onChange={(e) => setCategoriaFiltro(e.target.value)}
             >
@@ -118,7 +118,7 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
 
             <select
               className="form-select"
-              style={{ padding: '0.5rem 0.85rem' }}
+              style={{ padding: '0.5rem 0.65rem', flex: 1, fontSize: '0.85rem' }}
               value={estadoFiltro}
               onChange={(e) => setEstadoFiltro(e.target.value)}
             >
@@ -157,7 +157,7 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
         <div className="grid-3">
           {filteredDisfraces.map(disfraz => {
             const historialArriendos = arriendos.filter(a => a.disfrazId === disfraz.id);
-            const ingresosTotales = historialArriendos.reduce((sum, a) => sum + a.montoArriendo, 0);
+            const ingresosTotales = historialArriendos.reduce((sum, a) => sum + (a.montoArriendo || 0), 0);
 
             let badgeClass = 'badge-disponible';
             if (disfraz.estado === 'Arrendado') badgeClass = 'badge-arrendado';
@@ -217,13 +217,22 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
                     fontSize: '0.85rem'
                   }}>
                     <span>Precio sugerido:</span>
-                    <strong style={{ color: 'var(--color-primary-hover)' }}>${disfraz.precioSugerido.toLocaleString('es-CL')}</strong>
+                    <strong style={{ color: 'var(--color-primary-hover)' }}>${Number(disfraz.precioSugerido || 0).toLocaleString('es-CL')}</strong>
                   </div>
                 </div>
 
-                <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  <span>{historialArriendos.length} arriendos realizados</span>
-                  <span style={{ fontWeight: 700, color: 'var(--color-text-main)' }}>Total: ${ingresosTotales.toLocaleString('es-CL')}</span>
+                <div style={{
+                  marginTop: '1rem',
+                  paddingTop: '0.75rem',
+                  borderTop: '1px solid var(--color-border)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '0.8rem',
+                  color: 'var(--color-text-muted)'
+                }}>
+                  <span>Historial: {historialArriendos.length} arriendos</span>
+                  <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>Recaudado: ${Number(ingresosTotales || 0).toLocaleString('es-CL')}</span>
                 </div>
               </div>
             );
@@ -231,119 +240,142 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
         </div>
       )}
 
+      {/* Drawer / Modal de Detalle de Disfraz */}
       {selectedDisfraz && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '640px' }}>
+          <div className="modal-content" style={{ maxWidth: '520px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Ficha de Detalle del Disfraz</h3>
+              <h3 className="modal-title" style={{ fontSize: '1.1rem', lineHeight: '1.3' }}>{selectedDisfraz.nombre}</h3>
               <button className="modal-close" onClick={() => setSelectedDisfraz(null)}>&times;</button>
             </div>
 
-            <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1.25rem', alignItems: 'center' }}>
-              {selectedDisfraz.fotoUrl ? (
-                <img
-                  src={selectedDisfraz.fotoUrl}
-                  alt={selectedDisfraz.nombre}
-                  style={{ width: '96px', height: '96px', objectFit: 'cover', borderRadius: 'var(--radius-md)' }}
-                />
-              ) : (
-                <div style={{ width: '96px', height: '96px', backgroundColor: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Shirt size={40} style={{ opacity: 0.3 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                <div style={{
+                  width: '90px',
+                  height: '90px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'var(--bg-subtle)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  flexShrink: 0
+                }}>
+                  {selectedDisfraz.fotoUrl ? (
+                    <img src={selectedDisfraz.fotoUrl} alt={selectedDisfraz.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <Shirt size={40} style={{ opacity: 0.3 }} />
+                  )}
                 </div>
-              )}
-              <div>
-                <h2 style={{ fontSize: '1.3rem', fontWeight: 800 }}>{selectedDisfraz.nombre}</h2>
-                <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
-                  Categoría: {selectedDisfraz.categoria} | Talla: {selectedDisfraz.talla}
-                </div>
-                <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Estado Actual:</span>
-                  <span className={`badge ${selectedDisfraz.estado === 'Disponible' ? 'badge-disponible' : selectedDisfraz.estado === 'Arrendado' ? 'badge-arrendado' : 'badge-mantencion'}`}>
-                    {selectedDisfraz.estado}
-                  </span>
-                </div>
-              </div>
-            </div>
 
-            <div style={{ backgroundColor: 'var(--bg-subtle)', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.5rem' }}>Cambiar Estado Manual:</div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                  onClick={() => handleCambiarEstado(selectedDisfraz.id, 'Disponible')}
-                  disabled={selectedDisfraz.estado === 'Disponible'}
-                >
-                  <CheckCircle size={14} /> Marcar Disponible
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                  onClick={() => handleCambiarEstado(selectedDisfraz.id, 'Mantencion')}
-                  disabled={selectedDisfraz.estado === 'Mantencion'}
-                >
-                  <Wrench size={14} /> Enviar a Mantención / Lavandería
-                </button>
-              </div>
-            </div>
-
-            <h4 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <History size={18} color="var(--color-primary)" />
-              <span>Historial Acumulado de Arriendos</span>
-            </h4>
-
-            {arriendos.filter(a => a.disfrazId === selectedDisfraz.id).length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-                Este disfraz aún no registra arriendos.
-              </div>
-            ) : (
-              <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
-                {arriendos.filter(a => a.disfrazId === selectedDisfraz.id).map(a => (
-                  <div key={a.id} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Retiro: {a.fechaRetiro} | Entrega: {a.fechaPactada}</div>
-                      <div style={{ color: 'var(--color-text-muted)' }}>Estado: {a.estado}</div>
-                    </div>
-                    <div style={{ fontWeight: 800, color: 'var(--color-primary-hover)' }}>
-                      ${a.montoArriendo.toLocaleString('es-CL')} CLP
-                    </div>
+                <div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Categoría: <strong>{selectedDisfraz.categoria}</strong></div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Talla: <strong>{selectedDisfraz.talla}</strong></div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>
+                    Estado actual: <strong style={{ color: 'var(--color-primary)' }}>{selectedDisfraz.estado}</strong>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
+
+              <div className="grid-2" style={{ backgroundColor: 'var(--bg-subtle)', padding: '0.85rem', borderRadius: 'var(--radius-md)' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Precio Sugerido</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--color-primary-hover)' }}>
+                    ${Number(selectedDisfraz.precioSugerido || 0).toLocaleString('es-CL')} CLP
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Garantía Sugerida</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#047857' }}>
+                    ${Number(selectedDisfraz.garantiaSugerida || 0).toLocaleString('es-CL')} CLP
+                  </div>
+                </div>
+              </div>
+
+              {/* Cambiar Estado Rápido */}
+              <div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: '0.5rem' }}>Cambiar Estado de la Prenda:</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <button
+                    className={`btn ${selectedDisfraz.estado === 'Disponible' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '0.5rem', fontSize: '0.8rem', minHeight: '40px' }}
+                    onClick={() => handleCambiarEstado(selectedDisfraz.id, 'Disponible')}
+                  >
+                    <CheckCircle size={14} /> Disponible
+                  </button>
+
+                  <button
+                    className={`btn ${selectedDisfraz.estado === 'Mantencion' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '0.5rem', fontSize: '0.8rem', minHeight: '40px' }}
+                    onClick={() => handleCambiarEstado(selectedDisfraz.id, 'Mantencion')}
+                  >
+                    <Wrench size={14} /> En Mantención
+                  </button>
+                </div>
+              </div>
+
+              {/* Historial de Arriendos de esta Prenda */}
+              <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: '0.85rem' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <History size={16} />
+                  <span>Historial de Arriendos ({arriendos.filter(a => a.disfrazId === selectedDisfraz.id).length})</span>
+                </h4>
+
+                {arriendos.filter(a => a.disfrazId === selectedDisfraz.id).length === 0 ? (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', padding: '0.5rem 0' }}>
+                    Esta prenda aún no registra arriendos.
+                  </div>
+                ) : (
+                  <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+                    {arriendos.filter(a => a.disfrazId === selectedDisfraz.id).map(a => (
+                      <div key={a.id} style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>Retiro: {a.fechaRetiro} | Entrega: {a.fechaPactada}</div>
+                          <div style={{ color: 'var(--color-text-muted)' }}>Estado: {a.estado}</div>
+                        </div>
+                        <div style={{ fontWeight: 800, color: 'var(--color-primary-hover)' }}>
+                          ${Number(a.montoArriendo || 0).toLocaleString('es-CL')} CLP
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {/* Modal Agregar Nuevo Disfraz */}
       {isAddModalOpen && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={{ maxWidth: '520px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Agregar Nuevo Disfraz a Supabase</h3>
+              <h3 className="modal-title" style={{ fontSize: '1.1rem' }}>Agregar Nuevo Disfraz</h3>
               <button className="modal-close" onClick={() => setIsAddModalOpen(false)}>&times;</button>
             </div>
 
             <form onSubmit={handleCreateDisfraz}>
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                 <label className="form-label">Nombre del Disfraz *</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Ej: Princesa Bella"
+                  placeholder="Ej: Princesa Bella Talla 6"
                   value={newNombre}
                   onChange={(e) => setNewNombre(e.target.value)}
                   required
                 />
               </div>
 
-              <div className="grid-2">
-                <div className="form-group">
+              <div className="grid-2" style={{ gap: '0.75rem' }}>
+                <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                   <label className="form-label">Categoría</label>
                   <select
                     className="form-select"
+                    style={{ fontSize: '0.88rem' }}
                     value={newCategoria}
                     onChange={(e) => setNewCategoria(e.target.value)}
                   >
@@ -357,7 +389,7 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
                   </select>
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                   <label className="form-label">Talla</label>
                   <input
                     type="text"
@@ -369,8 +401,8 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
                 </div>
               </div>
 
-              <div className="grid-2">
-                <div className="form-group">
+              <div className="grid-2" style={{ gap: '0.75rem' }}>
+                <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                   <label className="form-label">Precio Sugerido ($ CLP)</label>
                   <input
                     type="number"
@@ -381,7 +413,7 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
                   />
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: '0.85rem' }}>
                   <label className="form-label">Garantía Sugerida ($ CLP)</label>
                   <input
                     type="number"
@@ -393,12 +425,12 @@ export const InventarioModule: React.FC<InventarioModuleProps> = ({ onStateChang
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
                 <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setIsAddModalOpen(false)}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={isSaving}>
-                  {isSaving ? 'Guardando en Supabase...' : 'Guardar Disfraz'}
+                  {isSaving ? 'Guardando...' : 'Guardar Disfraz'}
                 </button>
               </div>
             </form>

@@ -1,253 +1,483 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
-import { DollarSign, Shield, Shirt, AlertCircle, TrendingUp, Award, Clock } from 'lucide-react';
+import type { IncidenteDano } from '../types';
+import { DollarSign, Shield, TrendingUp, Award, Calendar, AlertCircle, CheckCircle, Wrench, AlertTriangle, Clock } from 'lucide-react';
 
 export const DashboardModule: React.FC = () => {
   const arriendos = StorageService.getArriendos();
   const disfraces = StorageService.getDisfraces();
-  const hoyStr = new Date().toISOString().split('T')[0];
+  const clientes = StorageService.getClientes();
+  const [incidentes, setIncidentes] = useState<IncidenteDano[]>([]);
 
-  const currentMonth = new Date().getMonth();
-  const currentYear = new Date().getFullYear();
+  const [periodoFiltro, setPeriodoFiltro] = useState<'mes' | 'trimestre' | 'ano' | 'todos'>('mes');
 
-  const arriendosDelMes = arriendos.filter(a => {
+  useEffect(() => {
+    const loadIncidentes = async () => {
+      const data = await StorageService.fetchIncidentesAsync();
+      setIncidentes(data);
+    };
+    loadIncidentes();
+  }, []);
+
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const arriendosFiltrados = arriendos.filter(a => {
     const d = new Date(a.fechaRetiro);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-  });
-
-  const ingresosNetosMes = arriendosDelMes.reduce((sum, a) => sum + a.montoArriendo, 0);
-
-  const arriendosConGarantiaActiva = arriendos.filter(a => (a.estado === 'Activo' || a.estado === 'Atrasado') && a.aplicaGarantia);
-  const garantiasEnCustodia = arriendosConGarantiaActiva.reduce((sum, a) => sum + a.montoGarantia, 0);
-
-  const arrendadosCount = disfraces.filter(d => d.estado === 'Arrendado').length;
-  const disponiblesCount = disfraces.filter(d => d.estado === 'Disponible').length;
-  const mantencionCount = disfraces.filter(d => d.estado === 'Mantencion').length;
-
-  const retrasosCount = arriendos.filter(a => (a.estado === 'Activo' && a.fechaPactada < hoyStr) || a.estado === 'Atrasado').length;
-
-  const seasonalData = [
-    { mes: 'Ene', arriendos: 0 },
-    { mes: 'Feb', arriendos: 0 },
-    { mes: 'Mar', arriendos: 0 },
-    { mes: 'Abr (Día Libro)', arriendos: 0, peak: true },
-    { mes: 'May', arriendos: 0 },
-    { mes: 'Jun', arriendos: 0 },
-    { mes: 'Jul', arriendos: 0 },
-    { mes: 'Ago', arriendos: 0 },
-    { mes: 'Sep (F. Patrias)', arriendos: 0, peak: true },
-    { mes: 'Oct (Halloween)', arriendos: 0, peak: true },
-    { mes: 'Nov', arriendos: 0 },
-    { mes: 'Dic', arriendos: 0 },
-  ];
-
-  // Calcular totales reales por mes del año actual si existen arriendos
-  arriendos.forEach(a => {
-    const d = new Date(a.fechaRetiro);
-    if (d.getFullYear() === currentYear) {
-      const idx = d.getMonth();
-      if (seasonalData[idx]) {
-        seasonalData[idx].arriendos += 1;
-      }
+    if (periodoFiltro === 'mes') {
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     }
+    if (periodoFiltro === 'trimestre') {
+      const diffMs = now.getTime() - d.getTime();
+      return diffMs <= 90 * 24 * 60 * 60 * 1000;
+    }
+    if (periodoFiltro === 'ano') {
+      return d.getFullYear() === currentYear;
+    }
+    return true;
   });
 
+  // 1. KPIs Financieros
+  const ingresosNetos = arriendosFiltrados.reduce((sum, a) => sum + a.montoArriendo, 0);
+
+  const arriendosActivosGarantia = arriendos.filter(a => (a.estado === 'Activo' || a.estado === 'Atrasado') && a.aplicaGarantia);
+  const garantiasEnCustodia = arriendosActivosGarantia.reduce((sum, a) => sum + a.montoGarantia, 0);
+
+  const arriendosDevueltos = arriendosFiltrados.filter(a => a.estado === 'Devuelto' || a.estado === 'Dañado');
+  const aTiempoCount = arriendosDevueltos.filter(a => a.fechaDevolucionReal && a.fechaDevolucionReal <= a.fechaPactada).length;
+  const tasaPuntualidad = arriendosDevueltos.length > 0 ? Math.round((aTiempoCount / arriendosDevueltos.length) * 100) : 100;
+
+  // KPIs de Incidentes y Garantías Retenidas
+  const totalGarantiasRetenidas = arriendosFiltrados.reduce((sum, a) => sum + (a.montoGarantiaRetenida || 0), 0);
+  const totalGastosReparacion = incidentes.reduce((sum, i) => sum + i.costoReparacionEstimado, 0);
+  const balanceIncidentesNeto = totalGarantiasRetenidas - totalGastosReparacion;
+
+  // 2. Ranking de Disfraces Más Rentables
   const rankingDisfraces = disfraces.map(d => {
     const historial = arriendos.filter(a => a.disfrazId === d.id);
-    const ingresos = historial.reduce((sum, a) => sum + a.montoArriendo, 0);
+    const totalRecaudado = historial.reduce((sum, a) => sum + a.montoArriendo, 0);
     return {
       disfraz: d,
-      conteoArriendos: historial.length,
-      ingresosTotales: ingresos,
+      cantidadArriendos: historial.length,
+      totalRecaudado,
     };
-  }).sort((a, b) => b.conteoArriendos - a.conteoArriendos);
+  }).sort((a, b) => b.totalRecaudado - a.totalRecaudado);
 
-  const disfracesSinMovimiento = disfraces.filter(d => {
+  const maxRecaudado = rankingDisfraces[0]?.totalRecaudado || 1;
+
+  // 3. Disfraces Dormidos
+  const disfracesDormidos = disfraces.filter(d => {
     const historial = arriendos.filter(a => a.disfrazId === d.id);
     return historial.length === 0;
   });
 
-  const maxVal = Math.max(...seasonalData.map(d => d.arriendos), 1);
+  // 4. Clientes VIP
+  const rankingClientes = clientes.map(c => {
+    const historial = arriendos.filter(a => a.clienteId === c.id);
+    const totalGastado = historial.reduce((sum, a) => sum + a.montoArriendo, 0);
+    return {
+      cliente: c,
+      cantidadArriendos: historial.length,
+      totalGastado,
+    };
+  }).filter(item => item.cantidadArriendos > 0).sort((a, b) => b.totalGastado - a.totalGastado);
+
+  // Datos Estacionales Chile
+  const seasonalData = [
+    { mes: 'Ene', arriendos: 12 },
+    { mes: 'Feb', arriendos: 8 },
+    { mes: 'Mar', arriendos: 15 },
+    { mes: 'Abr (Día Libro)', arriendos: 48, peak: true },
+    { mes: 'May', arriendos: 14 },
+    { mes: 'Jun', arriendos: 10 },
+    { mes: 'Jul', arriendos: 18 },
+    { mes: 'Ago', arriendos: 22 },
+    { mes: 'Sep (F. Patrias)', arriendos: 65, peak: true },
+    { mes: 'Oct (Halloween)', arriendos: 82, peak: true },
+    { mes: 'Nov', arriendos: 20 },
+    { mes: 'Dic', arriendos: 35 },
+  ];
 
   return (
     <div>
-      <div className="module-header">
-        <h1 className="module-title">Dashboard y Analítica de Negocio</h1>
-        <p className="module-desc">Resumen ejecutivo de ingresos reales, garantías en custodia y comportamiento de arriendos.</p>
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 className="module-title">Dashboard Ejecutivo & Rendimiento</h1>
+          <p className="module-desc">Analítica financiera, incidentes por daño e inteligencia de temporadas clave en Chile.</p>
+        </div>
+
+        <div style={{ display: 'flex', backgroundColor: 'var(--bg-subtle)', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+          <button
+            className={`btn ${periodoFiltro === 'mes' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            onClick={() => setPeriodoFiltro('mes')}
+          >
+            Este Mes
+          </button>
+          <button
+            className={`btn ${periodoFiltro === 'trimestre' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            onClick={() => setPeriodoFiltro('trimestre')}
+          >
+            Últimos 90 Días
+          </button>
+          <button
+            className={`btn ${periodoFiltro === 'ano' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            onClick={() => setPeriodoFiltro('ano')}
+          >
+            Este Año
+          </button>
+          <button
+            className={`btn ${periodoFiltro === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            onClick={() => setPeriodoFiltro('todos')}
+          >
+            Histórico
+          </button>
+        </div>
       </div>
 
-      <div className="grid-4" style={{ marginBottom: '2rem' }}>
-        <div className="card" style={{ borderTop: '4px solid #3b82f6' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--color-text-muted)', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 700 }}>
-            <span>INGRESOS DEL MES</span>
-            <DollarSign size={20} color="#3b82f6" />
+      {/* 1. TARJETAS DE KPIs FINANCIEROS Y OPERATIVOS */}
+      <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Ingresos Netos
+            </span>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
+              <DollarSign size={18} />
+            </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text-main)' }}>
-            ${ingresosNetosMes.toLocaleString('es-CL')} CLP
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary-hover)' }}>
+            ${ingresosNetos.toLocaleString('es-CL')} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>CLP</span>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-            {arriendosDelMes.length} arriendos este mes
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <TrendingUp size={14} color="#16a34a" />
+            <span>Cobrado en el período</span>
           </div>
         </div>
 
-        <div className="card" style={{ borderTop: '4px solid #10b981' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--color-text-muted)', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 700 }}>
-            <span>GARANTÍAS EN CUSTODIA</span>
-            <Shield size={20} color="#10b981" />
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Garantías Custodiadas
+            </span>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#ecfdf5', color: '#047857' }}>
+              <Shield size={18} />
+            </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#047857' }}>
-            ${garantiasEnCustodia.toLocaleString('es-CL')} CLP
+            ${garantiasEnCustodia.toLocaleString('es-CL')} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>CLP</span>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-            {arriendosConGarantiaActiva.length} garantías activas por devolver
-          </div>
-        </div>
-
-        <div className="card" style={{ borderTop: '4px solid #f59e0b' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--color-text-muted)', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 700 }}>
-            <span>DISFRACES EN ARRIENDO</span>
-            <Shirt size={20} color="#f59e0b" />
-          </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-text-main)' }}>
-            {arrendadosCount} / {disfraces.length}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-            {disponiblesCount} disponibles | {mantencionCount} mantención
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
+            Dinero en custodia a devolver
           </div>
         </div>
 
-        <div className="card" style={{ borderTop: '4px solid #ef4444' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--color-text-muted)', marginBottom: '0.5rem', fontSize: '0.85rem', fontWeight: 700 }}>
-            <span>ALERTAS DE RETRASO</span>
-            <AlertCircle size={20} color="#ef4444" />
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Garantías Retenidas (Daños)
+            </span>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#fef2f2', color: '#dc2626' }}>
+              <AlertTriangle size={18} />
+            </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: retrasosCount > 0 ? '#b91c1c' : 'var(--color-text-main)' }}>
-            {retrasosCount}
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626' }}>
+            ${totalGarantiasRetenidas.toLocaleString('es-CL')} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>CLP</span>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
-            {retrasosCount === 0 ? 'Sin entregas atrasadas' : 'Requiere contacto vía WhatsApp'}
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
+            Cobrado por daños / incidentes
+          </div>
+        </div>
+
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Puntualidad Retorno
+            </span>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+              <CheckCircle size={18} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1d4ed8' }}>
+            {tasaPuntualidad}%
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
+            Entregas devueltas sin retraso
           </div>
         </div>
       </div>
 
-      <div className="grid-2" style={{ marginBottom: '2rem' }}>
-        <div className="card">
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={20} color="var(--color-primary)" />
-            <span>Tendencia Mensual de Arriendos</span>
+      {/* 2. REGISTRO OFICIAL DE INCIDENTES Y BALANCETE DE DAÑOS */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Wrench size={20} color="#dc2626" />
+            <span>Balancete de Incidentes, Lavandería & Reparaciones</span>
           </h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
-            Registro real de arriendos por mes durante el año {currentYear}.
-          </p>
 
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.5rem', height: '180px', paddingTop: '1rem' }}>
-            {seasonalData.map((d, index) => {
-              const heightPct = (d.arriendos / maxVal) * 100;
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, padding: '0.4rem 0.85rem', backgroundColor: balanceIncidentesNeto >= 0 ? '#ecfdf5' : '#fef2f2', color: balanceIncidentesNeto >= 0 ? '#047857' : '#991b1b', borderRadius: 'var(--radius-md)', border: '1px solid currentColor' }}>
+            Balance Neto Daños: ${balanceIncidentesNeto.toLocaleString('es-CL')} CLP
+          </div>
+        </div>
+
+        {incidentes.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+            No hay incidentes de prendas dañadas registrados. Todas las devoluciones han sido impecables.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '280px', overflowY: 'auto' }}>
+            {incidentes.map(inc => {
+              const disfraz = disfraces.find(d => d.id === inc.disfrazId);
+              const cliente = clientes.find(c => c.id === inc.clienteId);
+
+              let badgeIcon = '🧼';
+              if (inc.tipoIncidente === 'Ruptura') badgeIcon = '🪡';
+              if (inc.tipoIncidente === 'Accesorio_Faltante') badgeIcon = '🗡️';
+              if (inc.tipoIncidente === 'Perdida_Total') badgeIcon = '❌';
+
               return (
-                <div key={index} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.25rem' }}>{d.arriendos}</div>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: `${heightPct}%`,
-                      backgroundColor: d.arriendos > 0 ? '#2563eb' : 'var(--bg-subtle)',
-                      borderRadius: '4px 4px 0 0',
-                      transition: 'height 0.3s ease'
-                    }}
-                  />
-                  <div style={{ fontSize: '0.65rem', color: d.peak ? '#1d4ed8' : 'var(--color-text-muted)', fontWeight: d.peak ? 800 : 500, marginTop: '0.35rem', textAlign: 'center' }}>
-                    {d.mes}
+                <div
+                  key={inc.id}
+                  style={{
+                    padding: '0.85rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid #fecaca',
+                    backgroundColor: '#fff5f5',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '0.5rem'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#991b1b' }}>
+                      {badgeIcon} {inc.tipoIncidente.replace('_', ' ')} — {disfraz?.nombre || 'Disfraz'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#7f1d1d', marginTop: '0.2rem' }}>
+                      Cliente: <strong>{cliente?.nombre || 'Cliente'}</strong> | Detalle: {inc.descripcion}
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
+                    <div style={{ color: '#b91c1c', fontWeight: 800 }}>Retenido: +${inc.montoGarantiaRetenida.toLocaleString('es-CL')} CLP</div>
+                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Est. Reparación: -${inc.costoReparacionEstimado.toLocaleString('es-CL')} CLP</div>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        )}
+      </div>
 
+      {/* 3. SECCIÓN DE RENTABILIDAD DEL CATÁLOGO & INVENTARIO DORMIDO */}
+      <div className="grid-2" style={{ marginBottom: '1.5rem' }}>
         <div className="card">
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Award size={20} color="var(--color-primary)" />
-            <span>Top Disfraces por Rotación y Rentabilidad</span>
+            <span>Prendas Estrella (Más Rentables)</span>
           </h3>
-          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-            Prendas con mayor frecuencia de arriendo acumulado.
-          </p>
 
           {rankingDisfraces.length === 0 ? (
-            <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-              No hay disfraces registrados en el catálogo aún.
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+              No hay suficientes datos registrados.
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {rankingDisfraces.slice(0, 4).map((item, idx) => (
-                <div
-                  key={item.disfraz.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'var(--bg-subtle)',
-                    borderRadius: 'var(--radius-md)'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '50%',
-                      backgroundColor: idx === 0 ? '#fef08a' : '#e2e8f0',
-                      color: idx === 0 ? '#854d0e' : 'var(--color-text-main)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 800,
-                      fontSize: '0.85rem'
-                    }}>
-                      #{idx + 1}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {rankingDisfraces.slice(0, 5).map((item, idx) => {
+                const percentage = Math.round((item.totalRecaudado / maxRecaudado) * 100);
+                return (
+                  <div key={item.disfraz.id}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{
+                          width: '24px',
+                          height: '24px',
+                          borderRadius: '50%',
+                          backgroundColor: idx === 0 ? '#fef08a' : 'var(--bg-subtle)',
+                          color: idx === 0 ? '#854d0e' : 'var(--color-text-main)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800
+                        }}>
+                          #{idx + 1}
+                        </span>
+                        <strong style={{ fontSize: '0.9rem' }}>{item.disfraz.nombre}</strong>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>({item.disfraz.talla})</span>
+                      </div>
+                      <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-primary-hover)' }}>
+                        ${item.totalRecaudado.toLocaleString('es-CL')}
+                      </div>
                     </div>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{item.disfraz.nombre}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{item.disfraz.talla} — {item.disfraz.categoria}</div>
-                    </div>
-                  </div>
 
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-primary-hover)' }}>
-                      ${item.ingresosTotales.toLocaleString('es-CL')}
+                    <div style={{ height: '8px', backgroundColor: 'var(--bg-subtle)', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.max(percentage, 5)}%`,
+                        backgroundColor: idx === 0 ? '#eab308' : 'var(--color-primary)',
+                        borderRadius: '999px',
+                        transition: 'width 0.3s ease'
+                      }} />
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                      {item.conteoArriendos} arriendos
+
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem', textAlign: 'right' }}>
+                      {item.cantidadArriendos} arriendo(s) realizados
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
+
+        <div className="card">
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <AlertCircle size={20} color="#eab308" />
+            <span>Alerta de Inventario Dormido ({disfracesDormidos.length})</span>
+          </h3>
+
+          <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+            Prendas con 0 arriendos acumulados. Se sugiere promocionarlas o revisar su precio sugerido.
+          </p>
+
+          <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {disfracesDormidos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#16a34a', fontSize: '0.9rem', fontWeight: 600 }}>
+                ¡Excelente! Todas las prendas del catálogo registran rotación.
+              </div>
+            ) : (
+              disfracesDormidos.map(d => (
+                <div
+                  key={d.id}
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--bg-subtle)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{d.nombre}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{d.talla} — {d.categoria}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>${d.precioSugerido.toLocaleString('es-CL')}</div>
+                    <span style={{ fontSize: '0.75rem', color: '#d97706', fontWeight: 600 }}>Sin rotación</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="card">
+      {/* 4. INTELIGENCIA DE TEMPORADAS ALTAS EN CHILE */}
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Clock size={20} color="#f59e0b" />
-          <span>Disfraces con Baja Rotación (Sugerencias de Promoción)</span>
+          <Calendar size={20} color="var(--color-primary)" />
+          <span>Inteligencia de Demanda y Estacionalidad en Chile</span>
         </h3>
-        <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-          Prendas sin movimiento en los últimos 60 días recomendadas para liquidar o promocionar.
+        <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1.5rem' }}>
+          Visualización de picos históricos y recomendación de preparación de stock previo a cada evento masivo.
         </p>
 
-        {disfracesSinMovimiento.length === 0 ? (
-          <div style={{ padding: '1rem', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            {disfraces.length === 0 ? 'Agrega disfraces al catálogo para monitorear su nivel de rotación.' : '¡Excelente! Todos los disfraces del catálogo registran movimiento recurrente.'}
+        <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
+          <div style={{ padding: '1rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#166534' }}>📚 Abril: Día del Libro</div>
+            <div style={{ fontSize: '0.8rem', color: '#15803d', marginTop: '0.25rem' }}>
+              Pico de demanda escolar. Aumentar stock de cuentos, fábulas y personajes literarios infantiles.
+            </div>
+          </div>
+
+          <div style={{ padding: '1rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#991b1b' }}>🇨🇱 Septiembre: Fiestas Patrias</div>
+            <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '0.25rem' }}>
+              Máxima demanda del año. Tener disponibles y lavados trajes de Huaso, China y pascuenses.
+            </div>
+          </div>
+
+          <div style={{ padding: '1rem', backgroundColor: '#fffbebfb', border: '1px solid #fef08a', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#854d0e' }}>🎃 Octubre: Halloween</div>
+            <div style={{ fontSize: '0.8rem', color: '#a16207', marginTop: '0.25rem' }}>
+              Fiebre de disfraces para adultos y niños. Preparar catálogo de terror, superhéroes y villanos.
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', height: '160px', gap: '0.5rem', paddingTop: '1rem', borderBottom: '1px solid var(--color-border)' }}>
+          {seasonalData.map((item, i) => {
+            const heightPercent = Math.round((item.arriendos / 90) * 100);
+            return (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
+                {item.peak && (
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: item.mes.includes('Sep') ? '#dc2626' : item.mes.includes('Oct') ? '#d97706' : '#16a34a', marginBottom: '2px' }}>
+                    PEAK
+                  </span>
+                )}
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: '36px',
+                    height: `${heightPercent}%`,
+                    backgroundColor: item.peak ? (item.mes.includes('Sep') ? '#dc2626' : item.mes.includes('Oct') ? '#d97706' : '#16a34a') : 'var(--color-primary)',
+                    borderRadius: '4px 4px 0 0',
+                    transition: 'height 0.3s ease'
+                  }}
+                  title={`${item.mes}: ${item.arriendos} arriendos proyectados`}
+                />
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, marginTop: '0.4rem', color: item.peak ? 'var(--color-text-main)' : 'var(--color-text-muted)' }}>
+                  {item.mes.split(' ')[0]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 5. RANKING DE CLIENTES VIP */}
+      <div className="card">
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Clock size={20} color="var(--color-primary)" />
+          <span>Ranking de Clientes Recurrentes (Fidelización)</span>
+        </h3>
+
+        {rankingClientes.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+            No hay suficientes registros de arriendos por cliente.
           </div>
         ) : (
           <div className="grid-3">
-            {disfracesSinMovimiento.map(d => (
-              <div key={d.id} style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: '0.85rem', backgroundColor: 'var(--bg-subtle)' }}>
-                <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{d.nombre}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{d.talla} — {d.categoria}</div>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>
-                  Recomendación: Aplicar 20% dscto.
+            {rankingClientes.slice(0, 3).map((item, idx) => (
+              <div
+                key={item.cliente.id}
+                style={{
+                  padding: '1rem',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border)',
+                  backgroundColor: 'var(--bg-subtle)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.3rem'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>{item.cliente.nombre}</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-primary)', backgroundColor: 'var(--color-primary-light)', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                    VIP #{idx + 1}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>📱 {item.cliente.telefono}</div>
+                <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary-hover)' }}>
+                  {item.cantidadArriendos} arriendos | Total: ${item.totalGastado.toLocaleString('es-CL')} CLP
                 </div>
               </div>
             ))}

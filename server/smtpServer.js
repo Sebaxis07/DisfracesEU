@@ -183,25 +183,48 @@ app.post('/api/db/arriendos', async (req, res) => {
   }
 });
 
-// POST /api/db/arriendos/devolucion
-app.post('/api/db/arriendos/devolucion', async (req, res) => {
+// POST /api/db/devolucion (y alias /api/db/arriendos/devolucion)
+app.post(['/api/db/devolucion', '/api/db/arriendos/devolucion'], async (req, res) => {
   try {
-    const { arriendoId, resolucionGarantia, montoGarantiaRetenida, estadoGarment, observacionesDevolucion } = req.body;
+    const { arriendoId, resolucionGarantia, montoGarantiaRetenida, estadoGarment, observacionesDevolucion, incidente } = req.body;
     const hoyStr = new Date().toISOString().split('T')[0];
+
+    const estadoArriendoFinal = (resolucionGarantia === 'Retenida_Total' || resolucionGarantia === 'Retenida_Parcial') ? 'Dañado' : 'Devuelto';
 
     const updateArriendo = `
       UPDATE public.arriendos
-      SET estado = 'Devuelto', fecha_devolucion_real = $1, resolucion_garantia = $2, monto_garantia_retenida = $3, observaciones = COALESCE(observaciones, '') || $4
-      WHERE id = $5
+      SET estado = $1, fecha_devolucion_real = $2, resolucion_garantia = $3, monto_garantia_retenida = $4, observaciones = COALESCE(observaciones, '') || $5
+      WHERE id = $6
       RETURNING *
     `;
     const result = await pool.query(updateArriendo, [
-      hoyStr, resolucionGarantia, montoGarantiaRetenida || 0, observacionesDevolucion ? ` | Devolución: ${observacionesDevolucion}` : '', arriendoId
+      estadoArriendoFinal, hoyStr, resolucionGarantia, montoGarantiaRetenida || 0, observacionesDevolucion ? ` | Devolución: ${observacionesDevolucion}` : '', arriendoId
     ]);
 
     const arriendo = result.rows[0];
     if (arriendo && arriendo.disfraz_id) {
       await pool.query("UPDATE public.disfraces SET estado = $1 WHERE id = $2", [estadoGarment || 'Disponible', arriendo.disfraz_id]);
+    }
+
+    // Registrar incidente si se proporciona
+    if (incidente && arriendo) {
+      const insertIncidente = `
+        INSERT INTO public.incidentes_danos
+        (arriendo_id, disfraz_id, cliente_id, tipo_incidente, descripcion, foto_evidencia_url, monto_garantia_retenida, monto_garantia_devuelta, costo_reparacion_estimado)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `;
+      await pool.query(insertIncidente, [
+        arriendo.id,
+        arriendo.disfraz_id,
+        arriendo.cliente_id,
+        incidente.tipoIncidente || 'Otro',
+        incidente.descripcion || 'Sin detalle',
+        incidente.fotoEvidenciaUrl,
+        montoGarantiaRetenida || 0,
+        incidente.montoGarantiaDevuelta || 0,
+        incidente.costoReparacionEstimado || 0,
+      ]);
+      console.log('[SUPABASE INCIDENTE DAÑO REGISTRADO OK]', incidente.tipoIncidente);
     }
 
     return res.json(arriendo);
@@ -210,9 +233,31 @@ app.post('/api/db/arriendos/devolucion', async (req, res) => {
   }
 });
 
+// GET /api/db/incidentes
+app.get('/api/db/incidentes', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM public.incidentes_danos ORDER BY fecha_incidente DESC');
+    const mapped = result.rows.map(item => ({
+      id: item.id,
+      arriendoId: item.arriendo_id,
+      disfrazId: item.disfraz_id,
+      clienteId: item.cliente_id,
+      tipoIncidente: item.tipo_incidente,
+      descripcion: item.descripcion,
+      fotoEvidenciaUrl: item.foto_evidencia_url || undefined,
+      montoGarantiaRetenida: Number(item.monto_garantia_retenida || 0),
+      montoGarantiaDevuelta: Number(item.monto_garantia_devuelta || 0),
+      costoReparacionEstimado: Number(item.costo_reparacion_estimado || 0),
+      fechaIncidente: item.fecha_incidente,
+    }));
+    return res.json(mapped);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // ==========================================
-// ENVÍO DE CORREOS HTML ELEGANTES DIRECTOS
+// CORREOS ELECTRÓNICOS ELEGANTES CON PLANTILLAS HTML COMPATIBLES
 // ==========================================
 
 app.post('/api/send-email', async (req, res) => {
@@ -267,7 +312,7 @@ app.post('/api/send-email', async (req, res) => {
       from: `Disfraces EU <${user}>`,
       to: toEmail,
       subject: subject || 'Aviso Disfraces EU',
-      html: finalHtml, // SOLAMENTE HTML para garantizar la plantilla rica sin degradar a texto plano
+      html: finalHtml,
     };
 
     const info = await transporter.sendMail(mailOptions);

@@ -1,9 +1,10 @@
-import type { Cliente, Disfraz, Arriendo, ConfiguracionAlertas, NotificacionLog } from '../types';
+import type { Cliente, Disfraz, Arriendo, IncidenteDano, ConfiguracionAlertas, NotificacionLog, TipoIncidente } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTES: 'disfraces_eu_v2_clientes',
   DISFRACES: 'disfraces_eu_v2_disfraces',
   ARRIENDOS: 'disfraces_eu_v2_arriendos',
+  INCIDENTES: 'disfraces_eu_v2_incidentes',
   CONFIG_ALERTAS: 'disfraces_eu_v2_config_alertas',
   NOTIFICACIONES: 'disfraces_eu_v2_notificaciones',
 };
@@ -34,11 +35,8 @@ export const StorageService = {
       const res = await fetch(`${API_BASE}/disfraces`);
       if (res.ok) {
         const mapped: Disfraz[] = await res.json();
-        console.log('[REAL POSTGRES DISFRACES LOADED]', mapped);
         localStorage.setItem(STORAGE_KEYS.DISFRACES, JSON.stringify(mapped));
         return mapped;
-      } else {
-        console.error('[API DISFRACES FETCH ERROR]', res.statusText);
       }
     } catch (err) {
       console.error('[API DISFRACES FETCH ERR]', err);
@@ -59,7 +57,6 @@ export const StorageService = {
 
       if (res.ok) {
         const dbDisfraz: Disfraz = await res.json();
-        console.log('[REAL POSTGRES INSERT DISFRAZ OK]', dbDisfraz);
 
         const idx = disfraces.findIndex(d => d.id === dbDisfraz.id);
         if (idx !== -1) {
@@ -155,7 +152,7 @@ export const StorageService = {
   },
 
   // ==========================================
-  // 3. ARRIENDOS
+  // 3. ARRIENDOS & DEVOLUCIONES CON DAÑOS
   // ==========================================
   getArriendos: (): Arriendo[] => {
     const data = localStorage.getItem(STORAGE_KEYS.ARRIENDOS);
@@ -223,14 +220,21 @@ export const StorageService = {
     resolucionGarantia: Arriendo['resolucionGarantia'],
     montoGarantiaRetenida: number = 0,
     estadoGarment: 'Disponible' | 'Mantencion' = 'Disponible',
-    observacionesDevolucion: string = ''
+    observacionesDevolucion: string = '',
+    incidentePayload?: {
+      tipoIncidente: TipoIncidente;
+      descripcion: string;
+      fotoEvidenciaUrl?: string;
+      montoGarantiaDevuelta: number;
+      costoReparacionEstimado: number;
+    }
   ): Promise<Arriendo | null> => {
     const arriendos = StorageService.getArriendos();
     const index = arriendos.findIndex(a => a.id === arriendoId);
     if (index === -1) return null;
 
     try {
-      const res = await fetch(`${API_BASE}/arriendos/devolucion`, {
+      const res = await fetch(`${API_BASE}/devolucion`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -239,6 +243,7 @@ export const StorageService = {
           montoGarantiaRetenida,
           estadoGarment,
           observacionesDevolucion,
+          incidente: incidentePayload,
         }),
       });
 
@@ -256,7 +261,7 @@ export const StorageService = {
 
     const hoyStr = formatDate(new Date());
     const arriendo = arriendos[index];
-    arriendo.estado = 'Devuelto';
+    arriendo.estado = (resolucionGarantia === 'Retenida_Total' || resolucionGarantia === 'Retenida_Parcial') ? 'Dañado' : 'Devuelto';
     arriendo.fechaDevolucionReal = hoyStr;
     arriendo.resolucionGarantia = resolucionGarantia;
     arriendo.montoGarantiaRetenida = montoGarantiaRetenida;
@@ -265,7 +270,30 @@ export const StorageService = {
     return arriendo;
   },
 
-  // 4. Configuración Alertas
+  // ==========================================
+  // 4. INCIDENTES DE DAÑO Y MANTENCIÓN
+  // ==========================================
+  getIncidentes: (): IncidenteDano[] => {
+    const data = localStorage.getItem(STORAGE_KEYS.INCIDENTES);
+    if (!data) return [];
+    return JSON.parse(data);
+  },
+
+  fetchIncidentesAsync: async (): Promise<IncidenteDano[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/incidentes`);
+      if (res.ok) {
+        const mapped: IncidenteDano[] = await res.json();
+        localStorage.setItem(STORAGE_KEYS.INCIDENTES, JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch (err) {
+      console.error('[API INCIDENTES FETCH ERR]', err);
+    }
+    return StorageService.getIncidentes();
+  },
+
+  // 5. Configuración Alertas
   getConfigAlertas: (): ConfiguracionAlertas => {
     const data = localStorage.getItem(STORAGE_KEYS.CONFIG_ALERTAS);
     if (!data) {
@@ -285,7 +313,7 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.CONFIG_ALERTAS, JSON.stringify(config));
   },
 
-  // 5. Notificaciones Log
+  // 6. Notificaciones Log
   getNotificaciones: (): NotificacionLog[] => {
     const data = localStorage.getItem(STORAGE_KEYS.NOTIFICACIONES);
     if (!data) return [];

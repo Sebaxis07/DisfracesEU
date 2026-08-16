@@ -4,6 +4,8 @@ export type EstadoArriendo = 'Activo' | 'Devuelto' | 'Atrasado' | 'Dañado';
 
 export type ResolucionGarantia = 'Devuelta' | 'Retenida_Total' | 'Retenida_Parcial';
 
+export type TipoIncidente = 'Mancha' | 'Ruptura' | 'Accesorio_Faltante' | 'Perdida_Total' | 'Otro';
+
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface Cliente {
@@ -27,13 +29,27 @@ export interface Disfraz {
   fechaCreacion: string;
 }
 
+export interface IncidenteDano {
+  id: string;
+  arriendoId: string;
+  disfrazId: string;
+  clienteId: string;
+  tipoIncidente: TipoIncidente;
+  descripcion: string;
+  fotoEvidenciaUrl?: string;
+  montoGarantiaRetenida: number;
+  montoGarantiaDevuelta: number;
+  costoReparacionEstimado: number;
+  fechaIncidente: string;
+}
+
 export interface Arriendo {
   id: string;
   clienteId: string;
   disfrazId: string;
-  fechaRetiro: string; // YYYY-MM-DD
-  fechaPactada: string; // YYYY-MM-DD
-  fechaDevolucionReal?: string; // YYYY-MM-DD
+  fechaRetiro: string;
+  fechaPactada: string;
+  fechaDevolucionReal?: string;
   montoArriendo: number;
   aplicaGarantia: boolean;
   montoGarantia: number;
@@ -42,12 +58,13 @@ export interface Arriendo {
   montoGarantiaRetenida?: number;
   fotoEntrega?: string;
   observaciones?: string;
+  incidente?: IncidenteDano;
 }
 
 export interface ConfiguracionAlertas {
   emailDestino: string;
-  smtpUser?: string;       // Correo emisor (ej: mi.correo@gmail.com)
-  smtpPass?: string;       // Contraseña de aplicación de 16 caracteres
+  smtpUser?: string;
+  smtpPass?: string;
   avisoDiarioMatutino: boolean;
   alertaInmediataVencimiento: boolean;
   reporteSemanal: boolean;

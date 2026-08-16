@@ -497,6 +497,15 @@ body {
 }
 
 /* Adapta grids a 1 columna en pantallas de celular (< 768px) */
+@media (max-width: 600px) {
+  .theme-btn span {
+    display: none !important;
+  }
+  .theme-btn {
+    padding: 0.35rem 0.45rem !important;
+  }
+}
+
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 {
     grid-template-columns: 1fr;

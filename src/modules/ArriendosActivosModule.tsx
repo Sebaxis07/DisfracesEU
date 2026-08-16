@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StorageService } from '../services/storage';
-import type { Arriendo, ResolucionGarantia } from '../types';
-import { MessageCircle, CheckCircle, Clock, AlertTriangle, ShieldCheck, Shirt } from 'lucide-react';
+import type { Arriendo, ResolucionGarantia, TipoIncidente } from '../types';
+import { MessageCircle, CheckCircle, Clock, AlertTriangle, ShieldCheck, Shirt, Camera, AlertCircle } from 'lucide-react';
 
 interface ArriendosActivosModuleProps {
   onStateChanged: () => void;
@@ -15,10 +15,18 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
   const [filter, setFilter] = useState<'Todos' | 'Hoy' | 'Vencidos'>('Todos');
   const [selectedArriendoForReturn, setSelectedArriendoForReturn] = useState<Arriendo | null>(null);
 
+  // Formulario de Liquidación e Inspección de Daño
   const [resolucionGarantia, setResolucionGarantia] = useState<ResolucionGarantia>('Devuelta');
   const [montoRetenido, setMontoRetenido] = useState<number>(0);
   const [estadoPrenda, setEstadoPrenda] = useState<'Disponible' | 'Mantencion'>('Disponible');
   const [observacionesDevolucion, setObservacionesDevolucion] = useState<string>('');
+
+  // Detalles de Incidente por Daño
+  const [tipoIncidente, setTipoIncidente] = useState<TipoIncidente>('Mancha');
+  const [descripcionIncidente, setDescripcionIncidente] = useState<string>('');
+  const [costoReparacionEstimado, setCostoReparacionEstimado] = useState<number>(0);
+  const [fotoEvidenciaUrl, setFotoEvidenciaUrl] = useState<string | undefined>(undefined);
+
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const hoyStr = new Date().toISOString().split('T')[0];
@@ -43,7 +51,7 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
     let mensaje = `Hola ${cliente.nombre}, te saludamos de *Disfraces EU*. `;
 
     if (esVencido) {
-      mensaje += `Te recordamos que el plazo pactado para la devolución del disfraz *${disfraz?.nombre || 'arrendado'}* venció el ${arriendo.fechaPactada}. Por favor acércate a entregarlo para liberar tu garantía de $${arriendo.montoGarantia.toLocaleString('es-CL')} CLP. ¡Muchas gracias!`;
+      mensaje += `Te recordamos que el plazo pactado para la devolución del disfraz *${disfraz?.nombre || 'arrendado'}* venció el ${arriendo.fechaPactada}. Por favor acércate a entregarlo para liberar tu garantía de $${Number(arriendo.montoGarantia || 0).toLocaleString('es-CL')} CLP. ¡Muchas gracias!`;
     } else {
       mensaje += `Te recordamos que hoy ${arriendo.fechaPactada} esperamos la devolución del disfraz *${disfraz?.nombre || 'arrendado'}*. ¡Te esperamos!`;
     }
@@ -53,17 +61,35 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
     window.open(url, '_blank');
   };
 
+  const handleSimularFotoEvidencia = () => {
+    setFotoEvidenciaUrl('https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&q=80');
+  };
+
   const handleConfirmReturn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedArriendoForReturn) return;
 
     setIsSubmitting(true);
+    const tieneDano = resolucionGarantia === 'Retenida_Parcial' || resolucionGarantia === 'Retenida_Total';
+    const garantiaTotal = Number(selectedArriendoForReturn.montoGarantia || 0);
+    const finalRetenido = tieneDano ? montoRetenido : 0;
+    const finalDevuelto = Math.max(0, garantiaTotal - finalRetenido);
+
+    const incidentePayload = tieneDano ? {
+      tipoIncidente,
+      descripcion: descripcionIncidente || `Garantía retenida: $${finalRetenido.toLocaleString('es-CL')} CLP.`,
+      fotoEvidenciaUrl,
+      montoGarantiaDevuelta: finalDevuelto,
+      costoReparacionEstimado,
+    } : undefined;
+
     await StorageService.finalizarDevolucionAsync(
       selectedArriendoForReturn.id,
       resolucionGarantia,
-      resolucionGarantia === 'Devuelta' ? 0 : montoRetenido,
-      estadoPrenda,
-      observacionesDevolucion
+      finalRetenido,
+      tieneDano ? 'Mantencion' : estadoPrenda,
+      observacionesDevolucion,
+      incidentePayload
     );
 
     setIsSubmitting(false);
@@ -75,10 +101,10 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
     <div>
       <div className="module-header">
         <h1 className="module-title">Gestión de Arriendos Activos y Devoluciones</h1>
-        <p className="module-desc">Línea de tiempo de urgencia (A tiempo vs Vencidos). Recordatorios vía WhatsApp a un solo clic.</p>
+        <p className="module-desc">Línea de tiempo de urgencia, recordatorios vía WhatsApp e inspección de daños con cobro de garantía.</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         <button
           className={`btn ${filter === 'Todos' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setFilter('Todos')}
@@ -133,7 +159,7 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
                   padding: '1.25rem 1.5rem'
                 }}
               >
-                <div style={{ flex: 1, minWidth: '280px' }}>
+                <div style={{ flex: 1, minWidth: '240px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.3rem' }}>
                     <span className={`badge ${esVencido ? 'badge-atrasado' : 'badge-activo'}`}>
                       {esVencido ? '⚠️ DEVOLUCIÓN VENCIDA' : 'EN PLAZO'}
@@ -148,10 +174,10 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
                   </div>
 
                   <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.85rem' }}>
-                    <span>Arriendo: <strong>${arriendo.montoArriendo.toLocaleString('es-CL')}</strong></span>
+                    <span>Arriendo: <strong>${Number(arriendo.montoArriendo || 0).toLocaleString('es-CL')}</strong></span>
                     {arriendo.aplicaGarantia && (
                       <span style={{ color: '#047857', fontWeight: 600 }}>
-                        Garantía en custodia: ${arriendo.montoGarantia.toLocaleString('es-CL')}
+                        Garantía en custodia: ${Number(arriendo.montoGarantia || 0).toLocaleString('es-CL')}
                       </span>
                     )}
                   </div>
@@ -171,11 +197,13 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
                     className="btn btn-primary"
                     onClick={() => {
                       setSelectedArriendoForReturn(arriendo);
-                      setMontoRetenido(arriendo.montoGarantia);
+                      setMontoRetenido(Number(arriendo.montoGarantia || 0));
+                      setEstadoPrenda('Disponible');
+                      setResolucionGarantia('Devuelta');
                     }}
                   >
                     <CheckCircle size={16} />
-                    <span>Registrar Devolución</span>
+                    <span>Inspeccionar & Recepcionar</span>
                   </button>
                 </div>
               </div>
@@ -184,55 +212,147 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
         </div>
       )}
 
+      {/* Modal Devolución e Inspección de Incidente por Daño */}
       {selectedArriendoForReturn && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={{ maxWidth: '540px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Recepcionar Prenda y Resolver Garantía</h3>
+              <h3 className="modal-title" style={{ fontSize: '1.05rem', lineHeight: '1.3' }}>Inspección & Devolución</h3>
               <button className="modal-close" onClick={() => setSelectedArriendoForReturn(null)}>&times;</button>
             </div>
 
             <form onSubmit={handleConfirmReturn}>
-              <div style={{ backgroundColor: 'var(--bg-subtle)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-md)', marginBottom: '1.25rem', fontSize: '0.9rem' }}>
+              <div style={{ backgroundColor: 'var(--bg-subtle)', padding: '0.75rem 0.9rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', fontSize: '0.85rem', lineHeight: '1.4' }}>
                 <div>Disfraz: <strong>{getDisfraz(selectedArriendoForReturn.disfrazId)?.nombre}</strong></div>
                 <div>Cliente: <strong>{getCliente(selectedArriendoForReturn.clienteId)?.nombre}</strong></div>
-                <div>Garantía en Custodia: <strong>${selectedArriendoForReturn.montoGarantia.toLocaleString('es-CL')} CLP</strong></div>
+                <div>Garantía Custodiada: <strong>${Number(selectedArriendoForReturn.montoGarantia || 0).toLocaleString('es-CL')} CLP</strong></div>
               </div>
 
+              {/* Selección de Estado e Inspección con opciones compactas en Móvil */}
               <div className="form-group">
-                <label className="form-label">Resolución de la Garantía *</label>
+                <label className="form-label">Estado de Recepción / Garantía *</label>
                 <select
                   className="form-select"
+                  style={{ fontSize: '0.88rem' }}
                   value={resolucionGarantia}
-                  onChange={(e) => setResolucionGarantia(e.target.value as ResolucionGarantia)}
+                  onChange={(e) => {
+                    const res = e.target.value as ResolucionGarantia;
+                    setResolucionGarantia(res);
+                    const gTotal = Number(selectedArriendoForReturn.montoGarantia || 0);
+                    if (res === 'Retenida_Total') {
+                      setMontoRetenido(gTotal);
+                      setEstadoPrenda('Mantencion');
+                    } else if (res === 'Retenida_Parcial') {
+                      setMontoRetenido(Math.round(gTotal / 2));
+                      setEstadoPrenda('Mantencion');
+                    } else {
+                      setMontoRetenido(0);
+                      setEstadoPrenda('Disponible');
+                    }
+                  }}
                 >
-                  <option value="Devuelta">Devolver 100% al Cliente (Prenda Impecable)</option>
-                  <option value="Retenida_Parcial">Retención Parcial (Daño Leve / Atraso)</option>
-                  <option value="Retenida_Total">Retención Total (Perdida / Daño Grave)</option>
+                  <option value="Devuelta">🟢 Prenda Impecable (Garantía 100%)</option>
+                  <option value="Retenida_Parcial">🟡 Daño / Faltante (Retención Parcial)</option>
+                  <option value="Retenida_Total">🔴 Pérdida / Daño Grave (Retención Total)</option>
                 </select>
               </div>
 
-              {resolucionGarantia !== 'Devuelta' && (
-                <div className="form-group">
-                  <label className="form-label">Monto de Garantía a Retener ($ CLP) *</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    value={montoRetenido}
-                    onChange={(e) => setMontoRetenido(Number(e.target.value))}
-                    max={selectedArriendoForReturn.montoGarantia}
-                    step="1000"
-                  />
+              {/* FORMULARIO DE DETALLE DE DAÑO */}
+              {(resolucionGarantia === 'Retenida_Parcial' || resolucionGarantia === 'Retenida_Total') && (
+                <div style={{ backgroundColor: '#fff5f5', border: '1px solid #fecaca', padding: '1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
+                  <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#991b1b', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <AlertCircle size={16} color="#dc2626" />
+                    <span>Registro Oficial del Incidente / Daño</span>
+                  </h4>
+
+                  <div className="grid-2" style={{ gap: '0.75rem' }}>
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label className="form-label">Tipo Daño *</label>
+                      <select
+                        className="form-select"
+                        style={{ fontSize: '0.85rem' }}
+                        value={tipoIncidente}
+                        onChange={(e) => setTipoIncidente(e.target.value as TipoIncidente)}
+                      >
+                        <option value="Mancha">🧼 Mancha Severa</option>
+                        <option value="Ruptura">🪡 Costura / Ropa Rota</option>
+                        <option value="Accesorio_Faltante">🗡️ Accesorio Faltante</option>
+                        <option value="Perdida_Total">❌ Pérdida Total</option>
+                        <option value="Otro">⚠️ Otro Incidente</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label className="form-label">Monto Retenido ($ CLP)</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        value={montoRetenido}
+                        onChange={(e) => setMontoRetenido(Number(e.target.value))}
+                        max={Number(selectedArriendoForReturn.montoGarantia || 0)}
+                        step="1000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Descripción del Daño *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="Ej: Mancha en la falda y costura rota"
+                      value={descripcionIncidente}
+                      onChange={(e) => setDescripcionIncidente(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="grid-2" style={{ gap: '0.75rem' }}>
+                    <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                      <label className="form-label">Costo Arreglo ($ CLP)</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        placeholder="Ej: 4000"
+                        value={costoReparacionEstimado}
+                        onChange={(e) => setCostoReparacionEstimado(Number(e.target.value))}
+                        step="500"
+                      />
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.3rem' }}>
+                        <label className="form-label">Evidencia</label>
+                        <button
+                          type="button"
+                          style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.2rem', fontSize: '0.75rem', fontWeight: 700 }}
+                          onClick={handleSimularFotoEvidencia}
+                        >
+                          <Camera size={13} /> Foto
+                        </button>
+                      </div>
+                      {fotoEvidenciaUrl && (
+                        <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
+                          ✓ Foto adjunta
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.78rem', color: '#7f1d1d', fontWeight: 600, marginTop: '0.5rem', backgroundColor: '#fee2e2', padding: '0.4rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
+                    Reembolso: ${Number(Math.max(0, (selectedArriendoForReturn.montoGarantia || 0) - (montoRetenido || 0))).toLocaleString('es-CL')} CLP | Margen Neto: +${Number((montoRetenido || 0) - (costoReparacionEstimado || 0)).toLocaleString('es-CL')} CLP
+                  </div>
                 </div>
               )}
 
+              {/* Destino Posterior del Disfraz en 2 Botones Adaptables */}
               <div className="form-group">
-                <label className="form-label">Estado Físico de la Prenda al Recibir</label>
-                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <label className="form-label">Destino Posterior de la Prenda</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                   <button
                     type="button"
                     className={`btn ${estadoPrenda === 'Disponible' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                    style={{ padding: '0.5rem 0.4rem', fontSize: '0.78rem', minHeight: '40px', lineHeight: '1.2' }}
                     onClick={() => setEstadoPrenda('Disponible')}
                   >
                     <ShieldCheck size={14} /> Listo para Re-arrendar
@@ -241,31 +361,31 @@ export const ArriendosActivosModule: React.FC<ArriendosActivosModuleProps> = ({ 
                   <button
                     type="button"
                     className={`btn ${estadoPrenda === 'Mantencion' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                    style={{ padding: '0.5rem 0.4rem', fontSize: '0.78rem', minHeight: '40px', lineHeight: '1.2' }}
                     onClick={() => setEstadoPrenda('Mantencion')}
                   >
-                    <Shirt size={14} /> Requiere Lavandería / Costura
+                    <Shirt size={14} /> Enviar a Mantención / Lavandería
                   </button>
                 </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Observaciones de la Entrega (Opcional)</label>
+                <label className="form-label">Observaciones Adicionales</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="Ej: Faltó accesorio espada, lavado pagado"
+                  placeholder="Ej: Cliente notificado vía WhatsApp"
                   value={observacionesDevolucion}
                   onChange={(e) => setObservacionesDevolucion(e.target.value)}
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1.25rem' }}>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
                 <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setSelectedArriendoForReturn(null)}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={isSubmitting}>
-                  {isSubmitting ? 'Guardando en Supabase...' : 'Confirmar Devolución'}
+                  {isSubmitting ? 'Guardando...' : 'Confirmar e Inspeccionar'}
                 </button>
               </div>
             </form>
