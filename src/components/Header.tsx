@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
       <header className="app-header">
         <div className="header-content">
           <div className="logo-area">
-            <div className="logo-icon">EU</div>
+            <img src="/logo.png" alt="Disfraces EU" className="logo-img" />
             <div>
               <div className="logo-title">Disfraces EU</div>
               <div className="logo-subtitle">Gestión Rápida</div>
