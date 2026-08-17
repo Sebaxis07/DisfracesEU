@@ -1,4 +1,4 @@
-import type { Cliente, Disfraz, Arriendo, IncidenteDano, ConfiguracionAlertas, NotificacionLog, TipoIncidente } from '../types';
+import type { Cliente, Disfraz, Arriendo, IncidenteDano, ConfiguracionAlertas, NotificacionLog, TipoIncidente, Reserva } from '../types';
 
 const STORAGE_KEYS = {
   CLIENTES: 'disfraces_eu_v2_clientes',
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   INCIDENTES: 'disfraces_eu_v2_incidentes',
   CONFIG_ALERTAS: 'disfraces_eu_v2_config_alertas',
   NOTIFICACIONES: 'disfraces_eu_v2_notificaciones',
+  RESERVAS: 'disfraces_eu_v2_reservas',
 };
 
 const API_BASE = '/api/db';
@@ -342,6 +343,96 @@ export const StorageService = {
     notifs.unshift(newNotif);
     localStorage.setItem(STORAGE_KEYS.NOTIFICACIONES, JSON.stringify(notifs));
     return newNotif;
+  },
+
+  // 7. RESERVAS
+  getReservas: (): Reserva[] => {
+    const data = localStorage.getItem(STORAGE_KEYS.RESERVAS);
+    if (!data) return [];
+    return JSON.parse(data);
+  },
+
+  fetchReservasAsync: async (): Promise<Reserva[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/reservas`);
+      if (res.ok) {
+        const mapped: Reserva[] = await res.json();
+        localStorage.setItem(STORAGE_KEYS.RESERVAS, JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch (err) {
+      console.error('[API RESERVAS FETCH ERR]', err);
+    }
+    return StorageService.getReservas();
+  },
+
+  saveReservaAsync: async (reservaData: Omit<Reserva, 'id' | 'fechaCreacion' | 'estado'> & { id?: string; estado?: Reserva['estado'] }): Promise<Reserva> => {
+    const reservas = StorageService.getReservas();
+    const nowStr = formatDate(new Date());
+
+    const newReserva: Reserva = {
+      id: reservaData.id || generateId('res'),
+      clienteId: reservaData.clienteId,
+      disfrazId: reservaData.disfrazId,
+      fechaInicio: reservaData.fechaInicio,
+      fechaFin: reservaData.fechaFin,
+      montoArriendo: reservaData.montoArriendo,
+      montoAbono: reservaData.montoAbono,
+      saldoPendiente: reservaData.saldoPendiente,
+      estado: reservaData.estado || 'Confirmada',
+      observaciones: reservaData.observaciones,
+      fechaCreacion: nowStr,
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/reservas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newReserva),
+      });
+
+      if (res.ok) {
+        const dbRes = await res.json();
+        const idx = reservas.findIndex(r => r.id === dbRes.id);
+        if (idx !== -1) {
+          reservas[idx] = dbRes;
+        } else {
+          reservas.unshift(dbRes);
+        }
+        localStorage.setItem(STORAGE_KEYS.RESERVAS, JSON.stringify(reservas));
+        return dbRes;
+      }
+    } catch (err) {
+      console.error('[POSTGRES SAVE RESERVA ERR]', err);
+    }
+
+    const idx = reservas.findIndex(r => r.id === newReserva.id);
+    if (idx !== -1) {
+      reservas[idx] = newReserva;
+    } else {
+      reservas.unshift(newReserva);
+    }
+    localStorage.setItem(STORAGE_KEYS.RESERVAS, JSON.stringify(reservas));
+    return newReserva;
+  },
+
+  updateEstadoReservaAsync: async (id: string, estado: Reserva['estado']) => {
+    const reservas = StorageService.getReservas();
+    const index = reservas.findIndex(r => r.id === id);
+    if (index !== -1) {
+      reservas[index].estado = estado;
+      localStorage.setItem(STORAGE_KEYS.RESERVAS, JSON.stringify(reservas));
+
+      try {
+        await fetch(`${API_BASE}/reservas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, estado }),
+        });
+      } catch (err) {
+        console.error('[DB SYNC ESTADO RESERVA ERR]', err);
+      }
+    }
   },
 
   clearAll: () => {

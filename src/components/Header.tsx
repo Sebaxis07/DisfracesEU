@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlusCircle, Clock, Shirt, BarChart3, Bell, Sun, Moon, Laptop } from 'lucide-react';
+import { PlusCircle, Clock, Shirt, BarChart3, Bell, Sun, Moon, Laptop, Calendar, FileText, Users, AlertOctagon } from 'lucide-react';
 import type { ThemeMode } from '../types';
 
 interface HeaderProps {
@@ -8,6 +8,7 @@ interface HeaderProps {
   unreadCount: number;
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
+  onOpenReportModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,6 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   unreadCount,
   themeMode,
   setThemeMode,
+  onOpenReportModal,
 }) => {
   return (
     <>
@@ -48,11 +50,35 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button
+              className={`nav-tab ${activeTab === 'reservas' ? 'active' : ''}`}
+              onClick={() => setActiveTab('reservas')}
+            >
+              <Calendar size={18} />
+              <span>Reservas</span>
+            </button>
+
+            <button
+              className={`nav-tab ${activeTab === 'clientes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('clientes')}
+            >
+              <Users size={18} />
+              <span>Clientes</span>
+            </button>
+
+            <button
               className={`nav-tab ${activeTab === 'inventario' ? 'active' : ''}`}
               onClick={() => setActiveTab('inventario')}
             >
               <Shirt size={18} />
               <span>Inventario</span>
+            </button>
+
+            <button
+              className={`nav-tab ${activeTab === 'comprobantes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('comprobantes')}
+            >
+              <FileText size={18} />
+              <span>Comprobantes</span>
             </button>
 
             <button
@@ -73,34 +99,50 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </nav>
 
-          {/* Selector de Tema: Claro / Oscuro / Sistema */}
-          <div className="theme-selector">
-            <button
-              className={`theme-btn ${themeMode === 'light' ? 'active' : ''}`}
-              onClick={() => setThemeMode('light')}
-              title="Modo Claro"
-            >
-              <Sun size={15} />
-              <span>Claro</span>
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {/* BOTÓN REPORTAR PROBLEMA */}
+            {onOpenReportModal && (
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ padding: '0.4rem 0.7rem', fontSize: '0.8rem', minHeight: '36px', display: 'inline-flex', gap: '0.35rem', alignItems: 'center' }}
+                onClick={onOpenReportModal}
+                title="Reportar problema o falla técnica al equipo soporte"
+              >
+                <AlertOctagon size={16} />
+                <span>Reportar Problema</span>
+              </button>
+            )}
 
-            <button
-              className={`theme-btn ${themeMode === 'dark' ? 'active' : ''}`}
-              onClick={() => setThemeMode('dark')}
-              title="Modo Oscuro"
-            >
-              <Moon size={15} />
-              <span>Oscuro</span>
-            </button>
+            {/* Selector de Tema: Claro / Oscuro / Sistema */}
+            <div className="theme-selector">
+              <button
+                className={`theme-btn ${themeMode === 'light' ? 'active' : ''}`}
+                onClick={() => setThemeMode('light')}
+                title="Modo Claro"
+              >
+                <Sun size={15} />
+                <span>Claro</span>
+              </button>
 
-            <button
-              className={`theme-btn ${themeMode === 'system' ? 'active' : ''}`}
-              onClick={() => setThemeMode('system')}
-              title="Modo Sistema"
-            >
-              <Laptop size={15} />
-              <span>Sistema</span>
-            </button>
+              <button
+                className={`theme-btn ${themeMode === 'dark' ? 'active' : ''}`}
+                onClick={() => setThemeMode('dark')}
+                title="Modo Oscuro"
+              >
+                <Moon size={15} />
+                <span>Oscuro</span>
+              </button>
+
+              <button
+                className={`theme-btn ${themeMode === 'system' ? 'active' : ''}`}
+                onClick={() => setThemeMode('system')}
+                title="Modo Sistema"
+              >
+                <Laptop size={15} />
+                <span>Sistema</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -124,11 +166,35 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <button
+          className={`mobile-nav-btn ${activeTab === 'reservas' ? 'active' : ''}`}
+          onClick={() => setActiveTab('reservas')}
+        >
+          <Calendar size={20} />
+          <span>Reservas</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'clientes' ? 'active' : ''}`}
+          onClick={() => setActiveTab('clientes')}
+        >
+          <Users size={20} />
+          <span>Clientes</span>
+        </button>
+
+        <button
           className={`mobile-nav-btn ${activeTab === 'inventario' ? 'active' : ''}`}
           onClick={() => setActiveTab('inventario')}
         >
           <Shirt size={20} />
           <span>Catálogo</span>
+        </button>
+
+        <button
+          className={`mobile-nav-btn ${activeTab === 'comprobantes' ? 'active' : ''}`}
+          onClick={() => setActiveTab('comprobantes')}
+        >
+          <FileText size={20} />
+          <span>Recibos</span>
         </button>
 
         <button

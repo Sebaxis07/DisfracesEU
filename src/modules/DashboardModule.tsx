@@ -1,87 +1,133 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
-import type { IncidenteDano } from '../types';
-import { DollarSign, Shield, TrendingUp, Award, Calendar, AlertCircle, CheckCircle, Wrench, AlertTriangle, Clock } from 'lucide-react';
+import type { Arriendo, Disfraz, Cliente, Reserva, IncidenteDano } from '../types';
+import { DollarSign, Shield, TrendingUp, Award, Calendar, AlertCircle, CheckCircle, Wrench, AlertTriangle, Star } from 'lucide-react';
 
 export const DashboardModule: React.FC = () => {
-  const arriendos = StorageService.getArriendos();
-  const disfraces = StorageService.getDisfraces();
-  const clientes = StorageService.getClientes();
+  const [arriendos, setArriendos] = useState<Arriendo[]>([]);
+  const [disfraces, setDisfraces] = useState<Disfraz[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
   const [incidentes, setIncidentes] = useState<IncidenteDano[]>([]);
 
-  const [periodoFiltro, setPeriodoFiltro] = useState<'mes' | 'trimestre' | 'ano' | 'todos'>('mes');
+  const [periodoFiltro, setPeriodoFiltro] = useState<'mes' | 'trimestre' | 'ano' | 'todos'>('todos');
+
+  const formatCLP = (val: number) => {
+    return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(val);
+  };
+
+  const loadAllData = async () => {
+    setArriendos(StorageService.getArriendos());
+    setDisfraces(StorageService.getDisfraces());
+    setClientes(StorageService.getClientes());
+    setReservas(StorageService.getReservas());
+    const incs = await StorageService.fetchIncidentesAsync();
+    setIncidentes(incs);
+  };
 
   useEffect(() => {
-    const loadIncidentes = async () => {
-      const data = await StorageService.fetchIncidentesAsync();
-      setIncidentes(data);
-    };
-    loadIncidentes();
+    loadAllData();
   }, []);
 
   const now = new Date();
-  const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
+  const currentMonthStr = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  const arriendosFiltrados = arriendos.filter(a => {
-    const d = new Date(a.fechaRetiro);
+  // Helper para validar si una fecha YYYY-MM-DD cae dentro del período seleccionado
+  const isInPeriod = (fechaStr?: string) => {
+    if (!fechaStr) return false;
+    if (periodoFiltro === 'todos') return true;
+
+    const [yyyy, mm] = fechaStr.split('-');
+    if (!yyyy || !mm) return true;
+
     if (periodoFiltro === 'mes') {
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      return `${yyyy}-${mm}` === currentMonthStr;
     }
-    if (periodoFiltro === 'trimestre') {
-      const diffMs = now.getTime() - d.getTime();
-      return diffMs <= 90 * 24 * 60 * 60 * 1000;
-    }
+
     if (periodoFiltro === 'ano') {
-      return d.getFullYear() === currentYear;
+      return Number(yyyy) === currentYear;
     }
+
+    if (periodoFiltro === 'trimestre') {
+      const itemDate = new Date(fechaStr).getTime();
+      const diffDays = (now.getTime() - itemDate) / (1000 * 3600 * 24);
+      return diffDays >= -30 && diffDays <= 90;
+    }
+
     return true;
-  });
+  };
 
-  // 1. KPIs Financieros
-  const ingresosNetos = arriendosFiltrados.reduce((sum, a) => sum + a.montoArriendo, 0);
+  // 1. Filtrado de Transacciones
+  const arriendosFiltrados = arriendos.filter(a => isInPeriod(a.fechaRetiro));
+  const reservasFiltradas = reservas.filter(r => isInPeriod(r.fechaInicio) && r.estado !== 'Cancelada');
 
+  // KPIs Financieros (Arriendos + Abonos de Reservas)
+  const ingresosArriendos = arriendosFiltrados.reduce((sum, a) => sum + a.montoArriendo, 0);
+  const ingresosAbonosReservas = reservasFiltradas.reduce((sum, r) => sum + r.montoAbono, 0);
+  const ingresosNetos = ingresosArriendos + ingresosAbonosReservas;
+
+  // Garantías en custodia (Arriendos activos + Reservas confirmadas)
   const arriendosActivosGarantia = arriendos.filter(a => (a.estado === 'Activo' || a.estado === 'Atrasado') && a.aplicaGarantia);
   const garantiasEnCustodia = arriendosActivosGarantia.reduce((sum, a) => sum + a.montoGarantia, 0);
 
+  // Tasa de Puntualidad
   const arriendosDevueltos = arriendosFiltrados.filter(a => a.estado === 'Devuelto' || a.estado === 'Dañado');
   const aTiempoCount = arriendosDevueltos.filter(a => a.fechaDevolucionReal && a.fechaDevolucionReal <= a.fechaPactada).length;
   const tasaPuntualidad = arriendosDevueltos.length > 0 ? Math.round((aTiempoCount / arriendosDevueltos.length) * 100) : 100;
 
-  // KPIs de Incidentes y Garantías Retenidas
+  // Garantías retenidas por daños
   const totalGarantiasRetenidas = arriendosFiltrados.reduce((sum, a) => sum + (a.montoGarantiaRetenida || 0), 0);
   const totalGastosReparacion = incidentes.reduce((sum, i) => sum + i.costoReparacionEstimado, 0);
   const balanceIncidentesNeto = totalGarantiasRetenidas - totalGastosReparacion;
 
-  // 2. Ranking de Disfraces Más Rentables
+  // 2. Ranking de Disfraces Más Rentables (Arriendos + Reservas)
   const rankingDisfraces = disfraces.map(d => {
-    const historial = arriendos.filter(a => a.disfrazId === d.id);
-    const totalRecaudado = historial.reduce((sum, a) => sum + a.montoArriendo, 0);
+    const arrs = arriendos.filter(a => a.disfrazId === d.id);
+    const resvs = reservas.filter(r => r.disfrazId === d.id && r.estado !== 'Cancelada');
+
+    const recArriendos = arrs.reduce((sum, a) => sum + a.montoArriendo, 0);
+    const recReservas = resvs.reduce((sum, r) => sum + r.montoAbono, 0);
+    const totalRecaudado = recArriendos + recReservas;
+    const cantidadTotal = arrs.length + resvs.length;
+
     return {
       disfraz: d,
-      cantidadArriendos: historial.length,
+      cantidadArriendos: cantidadTotal,
       totalRecaudado,
     };
   }).sort((a, b) => b.totalRecaudado - a.totalRecaudado);
 
   const maxRecaudado = rankingDisfraces[0]?.totalRecaudado || 1;
 
-  // 3. Disfraces Dormidos
+  // 3. Disfraces Dormidos (0 arriendos y 0 reservas)
   const disfracesDormidos = disfraces.filter(d => {
-    const historial = arriendos.filter(a => a.disfrazId === d.id);
-    return historial.length === 0;
+    const arrs = arriendos.filter(a => a.disfrazId === d.id);
+    const resvs = reservas.filter(r => r.disfrazId === d.id && r.estado !== 'Cancelada');
+    return arrs.length === 0 && resvs.length === 0;
   });
 
-  // 4. Clientes VIP
+  // 4. Ranking de Clientes Recurrentes / VIP (Arriendos + Reservas)
   const rankingClientes = clientes.map(c => {
-    const historial = arriendos.filter(a => a.clienteId === c.id);
-    const totalGastado = historial.reduce((sum, a) => sum + a.montoArriendo, 0);
+    const arrs = arriendos.filter(a => a.clienteId === c.id);
+    const resvs = reservas.filter(r => r.clienteId === c.id && r.estado !== 'Cancelada');
+
+    const totalGastadoArriendo = arrs.reduce((sum, a) => sum + a.montoArriendo, 0);
+    const totalGastadoReserva = resvs.reduce((sum, r) => sum + r.montoAbono, 0);
+    const totalGastado = totalGastadoArriendo + totalGastadoReserva;
+    const totalOperaciones = arrs.length + resvs.length;
+
     return {
       cliente: c,
-      cantidadArriendos: historial.length,
+      cantidadOperaciones: totalOperaciones,
       totalGastado,
     };
-  }).filter(item => item.cantidadArriendos > 0).sort((a, b) => b.totalGastado - a.totalGastado);
+  }).filter(item => item.cantidadOperaciones > 0).sort((a, b) => {
+    if (b.cantidadOperaciones !== a.cantidadOperaciones) {
+      return b.cantidadOperaciones - a.cantidadOperaciones;
+    }
+    return b.totalGastado - a.totalGastado;
+  });
 
   // Datos Estacionales Chile
   const seasonalData = [
@@ -101,40 +147,41 @@ export const DashboardModule: React.FC = () => {
 
   return (
     <div>
-      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+      {/* CABECERA Y FILTRO DE PERÍODO */}
+      <div className="module-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.25rem' }}>
         <div>
           <h1 className="module-title">Dashboard Ejecutivo & Rendimiento</h1>
           <p className="module-desc">Analítica financiera, incidentes por daño e inteligencia de temporadas clave en Chile.</p>
         </div>
 
-        <div style={{ display: 'flex', backgroundColor: 'var(--bg-subtle)', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+        <div style={{ display: 'flex', backgroundColor: 'var(--bg-subtle)', padding: '0.25rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)', flexWrap: 'wrap', gap: '0.25rem' }}>
           <button
             className={`btn ${periodoFiltro === 'mes' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none', minHeight: '36px' }}
             onClick={() => setPeriodoFiltro('mes')}
           >
             Este Mes
           </button>
           <button
             className={`btn ${periodoFiltro === 'trimestre' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none', minHeight: '36px' }}
             onClick={() => setPeriodoFiltro('trimestre')}
           >
             Últimos 90 Días
           </button>
           <button
             className={`btn ${periodoFiltro === 'ano' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none', minHeight: '36px' }}
             onClick={() => setPeriodoFiltro('ano')}
           >
             Este Año
           </button>
           <button
             className={`btn ${periodoFiltro === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none' }}
+            style={{ padding: '0.4rem 0.85rem', fontSize: '0.8rem', border: 'none', minHeight: '36px' }}
             onClick={() => setPeriodoFiltro('todos')}
           >
-            Histórico
+            Histórico Total
           </button>
         </div>
       </div>
@@ -155,7 +202,7 @@ export const DashboardModule: React.FC = () => {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
             <TrendingUp size={14} color="#16a34a" />
-            <span>Cobrado en el período</span>
+            <span>Arriendos ({formatCLP(ingresosArriendos)}) + Abonos ({formatCLP(ingresosAbonosReservas)})</span>
           </div>
         </div>
 
@@ -164,15 +211,15 @@ export const DashboardModule: React.FC = () => {
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Garantías Custodiadas
             </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#ecfdf5', color: '#047857' }}>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--status-disponible-bg)', color: 'var(--status-disponible)' }}>
               <Shield size={18} />
             </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#047857' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--status-disponible)' }}>
             ${garantiasEnCustodia.toLocaleString('es-CL')} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>CLP</span>
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
-            Dinero en custodia a devolver
+            Dinero en custodia a devolver al cliente
           </div>
         </div>
 
@@ -181,11 +228,11 @@ export const DashboardModule: React.FC = () => {
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Garantías Retenidas (Daños)
             </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#fef2f2', color: '#dc2626' }}>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado)' }}>
               <AlertTriangle size={18} />
             </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--status-atrasado)' }}>
             ${totalGarantiasRetenidas.toLocaleString('es-CL')} <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>CLP</span>
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
@@ -198,11 +245,11 @@ export const DashboardModule: React.FC = () => {
             <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Puntualidad Retorno
             </span>
-            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: '#eff6ff', color: '#1d4ed8' }}>
+            <div style={{ padding: '0.4rem', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
               <CheckCircle size={18} />
             </div>
           </div>
-          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1d4ed8' }}>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-primary)' }}>
             {tasaPuntualidad}%
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.5rem' }}>
@@ -219,7 +266,7 @@ export const DashboardModule: React.FC = () => {
             <span>Balancete de Incidentes, Lavandería & Reparaciones</span>
           </h3>
 
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, padding: '0.4rem 0.85rem', backgroundColor: balanceIncidentesNeto >= 0 ? '#ecfdf5' : '#fef2f2', color: balanceIncidentesNeto >= 0 ? '#047857' : '#991b1b', borderRadius: 'var(--radius-md)', border: '1px solid currentColor' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, padding: '0.4rem 0.85rem', backgroundColor: balanceIncidentesNeto >= 0 ? 'var(--status-disponible-bg)' : 'var(--status-atrasado-bg)', color: balanceIncidentesNeto >= 0 ? 'var(--status-disponible)' : 'var(--status-atrasado)', borderRadius: 'var(--radius-md)', border: '1px solid currentColor' }}>
             Balance Neto Daños: ${balanceIncidentesNeto.toLocaleString('es-CL')} CLP
           </div>
         </div>
@@ -245,8 +292,8 @@ export const DashboardModule: React.FC = () => {
                   style={{
                     padding: '0.85rem 1rem',
                     borderRadius: 'var(--radius-md)',
-                    border: '1px solid #fecaca',
-                    backgroundColor: '#fff5f5',
+                    border: '1px solid var(--color-border)',
+                    backgroundColor: 'var(--bg-subtle)',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
@@ -255,17 +302,17 @@ export const DashboardModule: React.FC = () => {
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#991b1b' }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#ef4444' }}>
                       {badgeIcon} {inc.tipoIncidente.replace('_', ' ')} — {disfraz?.nombre || 'Disfraz'}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#7f1d1d', marginTop: '0.2rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.2rem' }}>
                       Cliente: <strong>{cliente?.nombre || 'Cliente'}</strong> | Detalle: {inc.descripcion}
                     </div>
                   </div>
 
                   <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
-                    <div style={{ color: '#b91c1c', fontWeight: 800 }}>Retenido: +${inc.montoGarantiaRetenida.toLocaleString('es-CL')} CLP</div>
-                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>Est. Reparación: -${inc.costoReparacionEstimado.toLocaleString('es-CL')} CLP</div>
+                    <div style={{ color: '#ef4444', fontWeight: 800 }}>Retenido: +${inc.montoGarantiaRetenida.toLocaleString('es-CL')} CLP</div>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem' }}>Est. Reparación: -${inc.costoReparacionEstimado.toLocaleString('es-CL')} CLP</div>
                   </div>
                 </div>
               );
@@ -327,7 +374,7 @@ export const DashboardModule: React.FC = () => {
                     </div>
 
                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '0.2rem', textAlign: 'right' }}>
-                      {item.cantidadArriendos} arriendo(s) realizados
+                      {item.cantidadArriendos} operacion(es) realizada(s)
                     </div>
                   </div>
                 );
@@ -343,12 +390,12 @@ export const DashboardModule: React.FC = () => {
           </h3>
 
           <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-            Prendas con 0 arriendos acumulados. Se sugiere promocionarlas o revisar su precio sugerido.
+            Prendas con 0 arriendos o reservas acumuladas. Se sugiere promocionarlas o ajustar precio.
           </p>
 
           <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {disfracesDormidos.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#16a34a', fontSize: '0.9rem', fontWeight: 600 }}>
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--status-disponible)', fontSize: '0.9rem', fontWeight: 600 }}>
                 ¡Excelente! Todas las prendas del catálogo registran rotación.
               </div>
             ) : (
@@ -391,23 +438,23 @@ export const DashboardModule: React.FC = () => {
         </p>
 
         <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ padding: '1rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#166534' }}>📚 Abril: Día del Libro</div>
-            <div style={{ fontSize: '0.8rem', color: '#15803d', marginTop: '0.25rem' }}>
+          <div style={{ padding: '1rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--color-primary)' }}>📚 Abril: Día del Libro</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
               Pico de demanda escolar. Aumentar stock de cuentos, fábulas y personajes literarios infantiles.
             </div>
           </div>
 
-          <div style={{ padding: '1rem', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#991b1b' }}>🇨🇱 Septiembre: Fiestas Patrias</div>
-            <div style={{ fontSize: '0.8rem', color: '#b91c1c', marginTop: '0.25rem' }}>
+          <div style={{ padding: '1rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#ef4444' }}>🇨🇱 Septiembre: Fiestas Patrias</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
               Máxima demanda del año. Tener disponibles y lavados trajes de Huaso, China y pascuenses.
             </div>
           </div>
 
-          <div style={{ padding: '1rem', backgroundColor: '#fffbebfb', border: '1px solid #fef08a', borderRadius: 'var(--radius-md)' }}>
-            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#854d0e' }}>🎃 Octubre: Halloween</div>
-            <div style={{ fontSize: '0.8rem', color: '#a16207', marginTop: '0.25rem' }}>
+          <div style={{ padding: '1rem', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)' }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#f59e0b' }}>🎃 Octubre: Halloween</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '0.25rem' }}>
               Fiebre de disfraces para adultos y niños. Preparar catálogo de terror, superhéroes y villanos.
             </div>
           </div>
@@ -419,7 +466,7 @@ export const DashboardModule: React.FC = () => {
             return (
               <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
                 {item.peak && (
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: item.mes.includes('Sep') ? '#dc2626' : item.mes.includes('Oct') ? '#d97706' : '#16a34a', marginBottom: '2px' }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: item.mes.includes('Sep') ? '#ef4444' : item.mes.includes('Oct') ? '#f59e0b' : 'var(--status-disponible)', marginBottom: '2px' }}>
                     PEAK
                   </span>
                 )}
@@ -428,7 +475,7 @@ export const DashboardModule: React.FC = () => {
                     width: '100%',
                     maxWidth: '36px',
                     height: `${heightPercent}%`,
-                    backgroundColor: item.peak ? (item.mes.includes('Sep') ? '#dc2626' : item.mes.includes('Oct') ? '#d97706' : '#16a34a') : 'var(--color-primary)',
+                    backgroundColor: item.peak ? (item.mes.includes('Sep') ? '#ef4444' : item.mes.includes('Oct') ? '#f59e0b' : 'var(--status-disponible)') : 'var(--color-primary)',
                     borderRadius: '4px 4px 0 0',
                     transition: 'height 0.3s ease'
                   }}
@@ -443,20 +490,20 @@ export const DashboardModule: React.FC = () => {
         </div>
       </div>
 
-      {/* 5. RANKING DE CLIENTES VIP */}
+      {/* 5. RANKING DE CLIENTES RECURRENTES */}
       <div className="card">
         <h3 style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Clock size={20} color="var(--color-primary)" />
-          <span>Ranking de Clientes Recurrentes (Fidelización)</span>
+          <Star size={20} color="var(--color-primary)" />
+          <span>Ranking de Clientes Recurrentes (Fidelización & VIP)</span>
         </h3>
 
         {rankingClientes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-            No hay suficientes registros de arriendos por cliente.
+            No hay registros de operaciones asociadas a clientes en este filtro.
           </div>
         ) : (
           <div className="grid-3">
-            {rankingClientes.slice(0, 3).map((item, idx) => (
+            {rankingClientes.slice(0, 6).map((item, idx) => (
               <div
                 key={item.cliente.id}
                 style={{
@@ -466,18 +513,18 @@ export const DashboardModule: React.FC = () => {
                   backgroundColor: 'var(--bg-subtle)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.3rem'
+                  gap: '0.35rem'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>{item.cliente.nombre}</span>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-primary)', backgroundColor: 'var(--color-primary-light)', padding: '0.2rem 0.5rem', borderRadius: '999px' }}>
+                  <strong style={{ fontSize: '0.95rem' }}>{item.cliente.nombre}</strong>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-primary)', backgroundColor: 'var(--color-primary-light)', padding: '0.2rem 0.55rem', borderRadius: '999px' }}>
                     VIP #{idx + 1}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>📱 {item.cliente.telefono}</div>
                 <div style={{ marginTop: '0.4rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-primary-hover)' }}>
-                  {item.cantidadArriendos} arriendos | Total: ${item.totalGastado.toLocaleString('es-CL')} CLP
+                  {item.cantidadOperaciones} operacion(es) | Total: ${item.totalGastado.toLocaleString('es-CL')} CLP
                 </div>
               </div>
             ))}

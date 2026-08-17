@@ -72,6 +72,20 @@ CREATE TABLE IF NOT EXISTS public.notificaciones_log (
     fecha TIMESTAMPTZ DEFAULT clock_timestamp()
 );
 
+CREATE TABLE IF NOT EXISTS public.reservas (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    cliente_id TEXT NOT NULL,
+    disfraz_id TEXT NOT NULL,
+    fecha_inicio DATE NOT NULL,
+    fecha_fin DATE NOT NULL,
+    monto_arriendo NUMERIC(10,2) NOT NULL,
+    monto_abono NUMERIC(10,2) DEFAULT 0.00,
+    saldo_pendiente NUMERIC(10,2) NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'Confirmada',
+    observaciones TEXT,
+    created_at TIMESTAMPTZ DEFAULT clock_timestamp()
+);
+
 -- HABILITAR ROW LEVEL SECURITY (RLS)
 ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.disfraces ENABLE ROW LEVEL SECURITY;
@@ -79,6 +93,7 @@ ALTER TABLE public.arriendos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.incidentes_danos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.configuracion_alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reservas ENABLE ROW LEVEL SECURITY;
 
 -- POLÍTICAS RLS PÚBLICAS Y PERMISIVAS
 CREATE POLICY "Permitir lectura publica de clientes" ON public.clientes FOR SELECT USING (true);
@@ -102,3 +117,8 @@ CREATE POLICY "Permitir edicion publica de configuracion" ON public.configuracio
 CREATE POLICY "Permitir lectura publica de notificaciones" ON public.notificaciones_log FOR SELECT USING (true);
 CREATE POLICY "Permitir insercion publica de notificaciones" ON public.notificaciones_log FOR INSERT WITH CHECK (true);
 CREATE POLICY "Permitir edicion publica de notificaciones" ON public.notificaciones_log FOR UPDATE USING (true);
+
+CREATE POLICY "Permitir lectura publica de reservas" ON public.reservas FOR SELECT USING (true);
+CREATE POLICY "Permitir insercion publica de reservas" ON public.reservas FOR INSERT WITH CHECK (true);
+CREATE POLICY "Permitir actualizacion publica de reservas" ON public.reservas FOR UPDATE USING (true);
+

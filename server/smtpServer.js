@@ -256,6 +256,61 @@ app.get('/api/db/incidentes', async (req, res) => {
   }
 });
 
+// GET /api/db/reservas
+app.get('/api/db/reservas', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM public.reservas ORDER BY created_at DESC');
+    const mapped = result.rows.map(item => ({
+      id: item.id,
+      clienteId: item.cliente_id,
+      disfrazId: item.disfraz_id,
+      fechaInicio: item.fecha_inicio ? (item.fecha_inicio instanceof Date ? item.fecha_inicio.toISOString().split('T')[0] : String(item.fecha_inicio).split('T')[0]) : '',
+      fechaFin: item.fecha_fin ? (item.fecha_fin instanceof Date ? item.fecha_fin.toISOString().split('T')[0] : String(item.fecha_fin).split('T')[0]) : '',
+      montoArriendo: Number(item.monto_arriendo),
+      montoAbono: Number(item.monto_abono || 0),
+      saldoPendiente: Number(item.saldo_pendiente),
+      estado: item.estado,
+      observaciones: item.observaciones || undefined,
+      fechaCreacion: item.created_at,
+    }));
+    return res.json(mapped);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/db/reservas
+app.post('/api/db/reservas', async (req, res) => {
+  try {
+    const { id, clienteId, disfrazId, fechaInicio, fechaFin, montoArriendo, montoAbono, saldoPendiente, estado, observaciones } = req.body;
+    
+    if (id) {
+      const updateQuery = `
+        UPDATE public.reservas
+        SET estado = $1, observaciones = $2
+        WHERE id = $3
+        RETURNING *
+      `;
+      const result = await pool.query(updateQuery, [estado, observaciones, id]);
+      return res.json(result.rows[0]);
+    } else {
+      const insertQuery = `
+        INSERT INTO public.reservas 
+        (cliente_id, disfraz_id, fecha_inicio, fecha_fin, monto_arriendo, monto_abono, saldo_pendiente, estado, observaciones)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `;
+      const result = await pool.query(insertQuery, [
+        clienteId, disfrazId, fechaInicio, fechaFin, montoArriendo, montoAbono || 0, saldoPendiente, estado || 'Confirmada', observaciones
+      ]);
+
+      return res.json(result.rows[0]);
+    }
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // CORREOS ELECTRÓNICOS ELEGANTES CON PLANTILLAS HTML COMPATIBLES
 // ==========================================
@@ -329,6 +384,98 @@ app.post('/api/send-email', async (req, res) => {
       success: false,
       error: error.message || 'Error de autenticación o conexión SMTP. Verifica tu contraseña de aplicación.',
     });
+  }
+});
+
+// POST /api/report-issue (Alerta técnica automática o reporte enviado por la dueña)
+app.post('/api/report-issue', async (req, res) => {
+  try {
+    const { destino, origen, categoria, nivel, mensaje, moduloActual, mensajeDueña, stack, url, fecha, historialErrores } = req.body;
+    const targetEmail = destino || 'dpastora98@gmail.com';
+
+    console.log(`\n========================================`);
+    console.log(`🚨 [INCIDENCIA REPORTADA - ${origen}]`);
+    console.log(`📌 Categoría: [${categoria}] | Nivel: [${nivel}]`);
+    console.log(`🧩 Módulo Afectado: ${moduloActual}`);
+    console.log(`💬 Mensaje: ${mensajeDueña || mensaje}`);
+    if (url) console.log(`🔗 URL: ${url}`);
+    if (stack) console.log(`🥞 Stack: ${stack.split('\n')[0]}`);
+    console.log(`========================================\n`);
+
+    const user = process.env.VITE_SMTP_USER;
+    const pass = process.env.VITE_SMTP_PASS;
+
+    if (user && pass && !user.includes('tu.correo@gmail.com')) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: user.trim(),
+          pass: pass.trim().replace(/\s+/g, ''),
+        },
+      });
+
+      const subject = origen === 'MANUAL_DUEÑA'
+        ? `🚨 [REPORTE DUEÑA] ${categoria} en ${moduloActual}`
+        : `🔴 [ALERTA AUTOMÁTICA] ${categoria} en ${moduloActual}`;
+
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; background-color: #f8fafc; padding: 20px; color: #0f172a;">
+          <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+            <div style="border-bottom: 2px solid #ef4444; padding-bottom: 12px; margin-bottom: 16px;">
+              <h2 style="margin: 0; color: #dc2626; font-size: 20px;">
+                ${origen === 'MANUAL_DUEÑA' ? '🚨 Reporte de Incidencia de la Dueña' : '🔴 Alerta Técnica Automática del Sistema'}
+              </h2>
+              <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px;">Disfraces EU — Motor de Diagnóstico</p>
+            </div>
+
+            <div style="background-color: #f1f5f9; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+              <p style="margin: 0 0 6px 0;"><strong>🏷️ Categoría Específica:</strong> <span style="color: #2563eb; font-weight: bold;">${categoria}</span></p>
+              <p style="margin: 0 0 6px 0;"><strong>⚠️ Nivel de Severidad:</strong> <span style="color: #dc2626; font-weight: bold;">${nivel}</span></p>
+              <p style="margin: 0 0 6px 0;"><strong>🧩 Módulo Afectado:</strong> <strong>${moduloActual}</strong></p>
+              <p style="margin: 0;"><strong>📅 Fecha y Hora:</strong> ${fecha || new Date().toLocaleString('es-CL')}</p>
+            </div>
+
+            ${mensajeDueña ? `
+              <div style="background-color: #eff6ff; border-left: 4px solid #2563eb; padding: 12px; margin-bottom: 16px; border-radius: 4px;">
+                <h4 style="margin: 0 0 6px 0; color: #1e40af;">💬 Mensaje Escrito por la Dueña:</h4>
+                <p style="margin: 0; font-size: 15px; color: #1e293b;">"${mensajeDueña}"</p>
+              </div>
+            ` : ''}
+
+            <div style="margin-bottom: 16px;">
+              <h4 style="margin: 0 0 6px 0; color: #334155;">📄 Detalle Técnico del Error:</h4>
+              <pre style="background-color: #0f172a; color: #f8fafc; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto; white-space: pre-wrap;">${mensaje}\n${stack || ''}</pre>
+            </div>
+
+            ${historialErrores && historialErrores.length > 0 ? `
+              <div style="margin-top: 16px; border-top: 1px dashed #cbd5e1; padding-top: 12px;">
+                <h4 style="margin: 0 0 8px 0; color: #475569; font-size: 13px;">🕒 Historial de Consola Reciente:</h4>
+                <ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #64748b;">
+                  ${historialErrores.map(e => `<li>[${e.categoria}] ${e.mensaje} (${e.fecha})</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+
+            <div style="margin-top: 24px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+              Notificación despachada automáticamente a ${targetEmail} por Disfraces EU Engine.
+            </div>
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `Disfraces EU Engine <${user}>`,
+        to: targetEmail,
+        subject,
+        html: htmlContent,
+      });
+      console.log(`[EMAIL DISPACHADO OK] Correo de incidencia enviado a ${targetEmail}`);
+    }
+
+    return res.json({ success: true, message: `Reporte registrado y enviado a ${targetEmail}.` });
+  } catch (err) {
+    console.error('[REPORT ISSUE ERR]', err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

@@ -673,3 +673,335 @@ body {
 .switch-input:checked::before {
   transform: translateX(20px);
 }
+
+/* ==========================================
+   ESTILOS COMPROBANTES, TICKET TÉRMICO Y CONTRATO
+   ========================================== */
+.tab-switch {
+  display: flex;
+  background-color: var(--bg-subtle);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.tab-switch-btn {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-switch-btn.active {
+  background-color: var(--color-card-bg);
+  color: var(--color-text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.active-filter {
+  background-color: var(--color-primary) !important;
+  color: white !important;
+  border-color: var(--color-primary) !important;
+}
+
+.signature-canvas {
+  width: 100%;
+  max-width: 450px;
+  height: 110px;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: #ffffff;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+/* 1. FORMATO TICKET TÉRMICO (80mm) */
+.ticket-printable {
+  width: 280px;
+  margin: 0 auto;
+  padding: 1rem;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.82rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+.ticket-header {
+  text-align: center;
+}
+
+.ticket-logo {
+  height: 36px;
+  margin-bottom: 0.25rem;
+}
+
+.ticket-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.ticket-sub {
+  font-size: 0.7rem;
+  margin: 0 0 0.4rem 0;
+  color: #64748b;
+}
+
+.ticket-badge {
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin-top: 0.3rem;
+}
+
+.ticket-folio {
+  font-size: 0.9rem;
+  font-weight: 800;
+  margin: 0.2rem 0 0 0;
+}
+
+.ticket-fecha {
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.ticket-divider {
+  border-top: 1px dashed #94a3b8;
+  margin: 0.6rem 0;
+}
+
+.ticket-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.ticket-label {
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.ticket-value {
+  margin: 0;
+}
+
+.ticket-value-bold {
+  font-weight: 700;
+  margin: 0;
+}
+
+.ticket-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ticket-signature-img {
+  max-width: 140px;
+  height: 40px;
+  object-fit: contain;
+  margin: 0.3rem auto 0 auto;
+}
+
+.ticket-footer {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.ticket-small {
+  font-size: 0.65rem;
+  font-weight: normal;
+  margin: 0.2rem 0 0 0;
+  color: #64748b;
+}
+
+/* 2. FORMATO CONTRATO A4 */
+.contrato-printable {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  background-color: #ffffff;
+  color: #0f172a;
+  font-family: inherit;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+}
+
+.contrato-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.contrato-logo {
+  height: 48px;
+}
+
+.contrato-hr {
+  border: none;
+  border-top: 2px solid #2563eb;
+  margin: 1rem 0;
+}
+
+.contrato-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.contrato-box {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+}
+
+.contrato-box h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: #2563eb;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.contrato-box p {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.825rem;
+}
+
+.contrato-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  font-size: 0.825rem;
+}
+
+.contrato-table th {
+  background-color: #e2e8f0;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.contrato-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #cbd5e1;
+}
+
+.contrato-clauses {
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.contrato-clauses h4 {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.85rem;
+  color: #1e293b;
+}
+
+.contrato-clauses ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.contrato-clauses li {
+  margin-bottom: 0.3rem;
+}
+
+.contrato-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-top: 2.5rem;
+}
+
+.signature-box {
+  text-align: center;
+}
+
+.signature-line {
+  border-top: 1px solid #64748b;
+  margin-top: 2.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.signature-box p {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.contrato-signature-img {
+  max-width: 180px;
+  height: 50px;
+  object-fit: contain;
+  margin-bottom: 0.3rem;
+}
+
+/* REGLAS DE IMPRESIÓN IMPRIMIBLE (@media print) */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .print-modal-backdrop,
+  .print-modal-backdrop * {
+    visibility: visible;
+  }
+
+  .print-modal-backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-modal-content {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .ticket-printable {
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+  }
+
+  .contrato-printable {
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    padding: 0 !important;
+  }
+}
+
+.search-result-item:hover {
+  background-color: var(--bg-subtle) !important;
+}
+

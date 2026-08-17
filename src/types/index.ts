@@ -79,3 +79,40 @@ export interface NotificacionLog {
   leida: boolean;
   tipo: 'vencimiento' | 'diario' | 'alerta';
 }
+
+export type EstadoReserva = 'Confirmada' | 'Convertida' | 'Cancelada';
+
+export interface Reserva {
+  id: string;
+  clienteId: string;
+  disfrazId: string;
+  fechaInicio: string;
+  fechaFin: string;
+  montoArriendo: number;
+  montoAbono: number;
+  saldoPendiente: number;
+  estado: EstadoReserva;
+  observaciones?: string;
+  fechaCreacion: string;
+}
+
+export interface ComprobanteData {
+  tipo: 'Arriendo' | 'Reserva' | 'Devolucion';
+  folio: string;
+  fechaEmision: string;
+  clienteNombre: string;
+  clienteTelefono: string;
+  clienteDireccion?: string;
+  disfrazNombre: string;
+  disfrazTalla: string;
+  disfrazCategoria: string;
+  fechaInicio: string;
+  fechaFin: string;
+  montoArriendo: number;
+  montoAbono?: number;
+  montoGarantia: number;
+  saldoPendiente?: number;
+  observaciones?: string;
+  firmaUrl?: string;
+}
+

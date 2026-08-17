@@ -20,13 +20,45 @@ async function runMigration() {
     await client.connect();
     console.log('[SUPABASE MIGRATE] Conexión establecida con éxito.');
 
-    const sqlPath = path.join(__dirname, '../supabase/schema.sql');
-    const sqlScript = fs.readFileSync(sqlPath, 'utf8');
+    console.log('[SUPABASE MIGRATE] Creando tabla public.reservas...');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.reservas (
+          id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+          cliente_id TEXT NOT NULL,
+          disfraz_id TEXT NOT NULL,
+          fecha_inicio DATE NOT NULL,
+          fecha_fin DATE NOT NULL,
+          monto_arriendo NUMERIC(10,2) NOT NULL,
+          monto_abono NUMERIC(10,2) DEFAULT 0.00,
+          saldo_pendiente NUMERIC(10,2) NOT NULL,
+          estado TEXT NOT NULL DEFAULT 'Confirmada',
+          observaciones TEXT,
+          created_at TIMESTAMPTZ DEFAULT clock_timestamp()
+      );
 
-    console.log('[SUPABASE MIGRATE] Ejecutando esquema SQL...');
-    await client.query(sqlScript);
+      ALTER TABLE public.reservas ENABLE ROW LEVEL SECURITY;
 
-    console.log('[SUPABASE MIGRATE] ✅ Las 5 tablas (clientes, disfraces, arriendos, configuracion_alertas, notificaciones_log) han sido creadas exitosamente en tu base de datos Supabase.');
+      DO $$ 
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM pg_policies WHERE tablename = 'reservas' AND policyname = 'Permitir lectura publica de reservas'
+          ) THEN
+              CREATE POLICY "Permitir lectura publica de reservas" ON public.reservas FOR SELECT USING (true);
+          END IF;
+          IF NOT EXISTS (
+              SELECT 1 FROM pg_policies WHERE tablename = 'reservas' AND policyname = 'Permitir insercion publica de reservas'
+          ) THEN
+              CREATE POLICY "Permitir insercion publica de reservas" ON public.reservas FOR INSERT WITH CHECK (true);
+          END IF;
+          IF NOT EXISTS (
+              SELECT 1 FROM pg_policies WHERE tablename = 'reservas' AND policyname = 'Permitir actualizacion publica de reservas'
+          ) THEN
+              CREATE POLICY "Permitir actualizacion publica de reservas" ON public.reservas FOR UPDATE USING (true);
+          END IF;
+      END $$;
+    `);
+
+    console.log('[SUPABASE MIGRATE] ✅ La tabla public.reservas ha sido creada exitosamente en Supabase PostgreSQL.');
   } catch (error) {
     console.error('[SUPABASE MIGRATE ERROR]', error);
   } finally {

@@ -5,12 +5,18 @@ import { ArriendosActivosModule } from './modules/ArriendosActivosModule';
 import { InventarioModule } from './modules/InventarioModule';
 import { DashboardModule } from './modules/DashboardModule';
 import { NotificacionesModule } from './modules/NotificacionesModule';
+import { ReservasModule } from './modules/ReservasModule';
+import { ComprobantesModule } from './modules/ComprobantesModule';
+import { ClientesModule } from './modules/ClientesModule';
+import { ReportProblemModal } from './components/ReportProblemModal';
 import { StorageService } from './services/storage';
 import { useTheme } from './services/theme';
+import { errorLogger } from './services/errorLogger';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('registro');
   const [refreshKey, setRefreshKey] = useState<number>(0);
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const { themeMode, setThemeMode } = useTheme();
 
   const handleStateChanged = () => {
@@ -18,11 +24,16 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    errorLogger.setActiveModule(activeTab);
+  }, [activeTab]);
+
+  useEffect(() => {
     const syncDatabase = async () => {
       await Promise.all([
         StorageService.fetchClientesAsync(),
         StorageService.fetchDisfracesAsync(),
         StorageService.fetchArriendosAsync(),
+        StorageService.fetchReservasAsync(),
       ]);
       handleStateChanged();
     };
@@ -40,6 +51,7 @@ export const App: React.FC = () => {
         unreadCount={unreadCount}
         themeMode={themeMode}
         setThemeMode={setThemeMode}
+        onOpenReportModal={() => setShowReportModal(true)}
       />
 
       <main className="main-content">
@@ -58,10 +70,27 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeTab === 'reservas' && (
+          <ReservasModule
+            onStateChanged={handleStateChanged}
+          />
+        )}
+
+        {activeTab === 'clientes' && (
+          <ClientesModule
+            onStateChanged={handleStateChanged}
+            onNavigateToNuevoArriendo={() => setActiveTab('registro')}
+          />
+        )}
+
         {activeTab === 'inventario' && (
           <InventarioModule
             onStateChanged={handleStateChanged}
           />
+        )}
+
+        {activeTab === 'comprobantes' && (
+          <ComprobantesModule />
         )}
 
         {activeTab === 'dashboard' && (
@@ -74,8 +103,16 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {showReportModal && (
+        <ReportProblemModal
+          activeModule={activeTab}
+          onClose={() => setShowReportModal(false)}
+        />
+      )}
     </div>
   );
 };
 
 export default App;
+
